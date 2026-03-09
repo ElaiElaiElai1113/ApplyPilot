@@ -1,0 +1,29 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "env": {
+    "NEXT_PUBLIC_SUPABASE_URL": {
+      "description": "Your Supabase project URL",
+      "value": ""
+    },
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": {
+      "description": "Your Supabase anonymous key",
+      "value": ""
+    },
+    "SUPABASE_SERVICE_ROLE_KEY": {
+      "description": "Your Supabase service role key (never expose to client)",
+      "value": ""
+    },
+    "GLM_API_KEY": {
+      "description": "Your GLM API key for AI generation",
+      "value": ""
+    },
+    "GLM_API_URL": {
+      "description": "GLM API URL",
+      "value": "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    }
+  }
+}

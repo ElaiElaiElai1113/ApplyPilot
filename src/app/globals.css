@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 250 100% 67%; /* #7b68ee - Purple */
+    --primary-dark: 250 100% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 260 100% 65%; /* #9370db - Light Purple */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 250 100% 67%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 240 40% 15%; /* #1e1e3f - Dark Navy */
+    --foreground: 0 0% 100%;
+    --card: 240 40% 18%; /* #2a2a3e */
+    --card-foreground: 0 0% 100%;
+    --popover: 240 40% 15%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 250 100% 67%;
+    --primary-dark: 250 100% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 260 100% 65%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 40% 25%;
+    --muted-foreground: 240 5% 75%;
+    --accent: 240 40% 20%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 40% 25%;
+    --input: 240 40% 25%;
+    --ring: 250 100% 67%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
+
+/* Gradient backgrounds */
+.gradient-bg {
+  background: linear-gradient(135deg, hsl(var(--background)) 0%, hsl(var(--card)) 100%);
+}
+
+.gradient-primary {
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--secondary)) 100%);
+}
+
+/* Glass effect */
+.glass {
+  @apply backdrop-blur-md bg-white/10 border border-white/20;
+}
+
+.dark .glass {
+  @apply bg-black/20 border-white/10;
+}
