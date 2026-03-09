@@ -10,14 +10,12 @@ import {
   Send,
   ArrowRight,
   Loader2,
-  Calendar,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getDashboardStats } from '@/lib/supabase/queries'
-import { getCurrentUser } from '@/lib/auth'
+import { getClientCurrentUser, getClientDashboardStats } from '@/lib/supabase/client-queries'
 import { formatDate, getStatusColor, getMatchScoreColor } from '@/lib/utils'
 import type { Application } from '@/types/database'
 
@@ -46,6 +44,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<{
     applicationsThisWeek: number
     averageMatchScore: number
+    totalApplications: number
     recentApplications: Application[]
   } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -53,10 +52,10 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const user = await getCurrentUser()
+        const user = await getClientCurrentUser()
         if (!user) return
 
-        const data = await getDashboardStats(user.id)
+        const data = await getClientDashboardStats(user.id)
         setStats(data)
       } catch (error) {
         console.error('Failed to load dashboard:', error)
@@ -115,7 +114,7 @@ export default function DashboardPage() {
           />
           <StatsCard
             title="Total Applications"
-            value={stats?.recentApplications?.length || 0}
+            value={stats?.totalApplications || 0}
             icon={FileText}
             color="bg-green-500/10 text-green-500"
           />

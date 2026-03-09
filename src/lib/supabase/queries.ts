@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from './client'
+import { createClient } from './server'
 import type { Resume, Application } from '@/types/database'
 
 export async function getUserResumes(userId: string): Promise<Resume[]> {
@@ -188,7 +188,13 @@ export async function getDashboardStats(userId: string) {
     .order('created_at', { ascending: false })
     .limit(5)
 
-  if (weeklyError || allError || recentError) {
+  // Get total applications count
+  const { count: totalApplications, error: totalError } = await supabase
+    .from('applications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+
+  if (weeklyError || allError || recentError || totalError) {
     throw new Error('Failed to fetch dashboard stats')
   }
 
@@ -202,6 +208,7 @@ export async function getDashboardStats(userId: string) {
   return {
     applicationsThisWeek: weeklyApps?.length || 0,
     averageMatchScore,
+    totalApplications: totalApplications || 0,
     recentApplications: recentApps || [],
   }
 }

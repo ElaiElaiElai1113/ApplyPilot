@@ -3,12 +3,10 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from '@/lib/auth'
-import { Sparkles, LayoutDashboard, FileText, Send, Table, LogOut, User, Menu, X } from 'lucide-react'
+import { Sparkles, LayoutDashboard, FileText, Send, Table, LogOut, Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
-import { getCurrentUser } from '@/lib/auth'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -24,11 +22,6 @@ export default function AppLayout({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [user, setUser] = useState<any>(null)
-
-  useState(() => {
-    getCurrentUser().then(setUser)
-  })
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/5">

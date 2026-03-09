@@ -20,11 +20,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { getUserResumes, createResume, updateResume, deleteResume } from '@/lib/supabase/queries'
-import { getCurrentUser } from '@/lib/auth'
-import { formatDate, truncateText } from '@/lib/utils'
-import type { Resume } from '@/types/database'
 import { useToast } from '@/hooks/use-toast'
+import type { Resume } from '@/types/database'
+import { formatDate, truncateText } from '@/lib/utils'
 
 export default function ResumesPage() {
   const [resumes, setResumes] = useState<Resume[]>([])
@@ -37,27 +35,22 @@ export default function ResumesPage() {
   const [formData, setFormData] = useState({ title: '', content: '' })
   const { toast } = useToast()
 
+  // Load resumes from local storage
   useEffect(() => {
-    loadResumes()
-  }, [])
-
-  async function loadResumes() {
-    try {
-      const user = await getCurrentUser()
-      if (!user) return
-
-      const data = await getUserResumes(user.id)
-      setResumes(data)
-    } catch (error) {
-      toast({
-        title: 'Failed to load resumes',
-        description: 'Please try again later',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsLoading(false)
+    const saved = localStorage.getItem('resumes')
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved)
+        setResumes(parsed)
+        if (parsed.length > 0 && !selectedResume) {
+          setSelectedResume(parsed[0])
+        }
+      } catch (e) {
+        console.error('Failed to load resumes:', e)
+      }
     }
-  }
+    setIsLoading(false)
+  }, [])
 
   async function handleSave() {
     if (!formData.title.trim() || !formData.content.trim()) {
@@ -70,24 +63,33 @@ export default function ResumesPage() {
 
     setIsSaving(true)
     try {
-      const user = await getCurrentUser()
-      if (!user) return
-
-      if (isEditing && selectedResume) {
-        await updateResume(selectedResume.id, formData.title, formData.content)
-        toast({
-          title: 'Resume updated',
-          description: 'Your resume has been updated successfully',
-        })
-      } else {
-        await createResume(user.id, formData.title, formData.content)
-        toast({
-          title: 'Resume created',
-          description: 'Your resume has been added to the vault',
-        })
+      const newResume: Resume = {
+        id: Date.now().toString(),
+        title: formData.title,
+        content: formData.content,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        user_id: 'local',
       }
 
-      await loadResumes()
+      let updated = [...resumes]
+      if (isEditing && selectedResume) {
+        updated = updated.map(r => r.id === selectedResume.id ? newResume : r)
+      } else {
+        updated = [newResume, ...updated]
+      }
+
+      // Save to localStorage
+      localStorage.setItem('resumes', JSON.stringify(updated))
+      setResumes(updated)
+
+      toast({
+        title: isEditing ? 'Resume updated' : 'Resume created',
+        description: isEditing
+          ? 'Your resume has been updated successfully'
+          : 'Your resume has been added to the vault',
+      })
+
       setIsDialogOpen(false)
       resetForm()
     } catch (error) {
@@ -104,12 +106,14 @@ export default function ResumesPage() {
   async function handleDelete(id: string) {
     setIsDeleting(id)
     try {
-      await deleteResume(id)
+      const updated = resumes.filter(r => r.id !== id)
+      localStorage.setItem('resumes', JSON.stringify(updated))
+      setResumes(updated)
+
       toast({
         title: 'Resume deleted',
         description: 'Your resume has been removed from the vault',
       })
-      await loadResumes()
     } catch (error) {
       toast({
         title: 'Failed to delete resume',
@@ -195,7 +199,7 @@ export default function ResumesPage() {
           <Card className="max-w-md mx-auto">
             <CardContent className="p-12">
               <FileText className="h-16 w-16 mx-auto text-muted-foreground mb-6" />
-              <h2 className="text-2xl font-bold mb-3">No resumes yet</h2>
+              <h2 className="text-2xl font-semibold mb-3">No resumes yet</h2>
               <p className="text-muted-foreground mb-6">
                 Add your master resume to get started with AI-powered applications
               </p>

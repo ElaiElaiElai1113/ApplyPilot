@@ -13,7 +13,6 @@ import {
   MessageSquare,
   ArrowRight,
   Check,
-  X,
   BarChart3,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,10 +24,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { getUserResumes } from '@/lib/supabase/queries'
-import { getCurrentUser } from '@/lib/auth'
 import { generateApplication, type GenerateApplicationResponse } from '@/lib/ai'
-import { createApplication } from '@/lib/supabase/queries'
+import {
+  createClientApplication,
+  getClientCurrentUser,
+  getClientResumes,
+} from '@/lib/supabase/client-queries'
 import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import type { Resume } from '@/types/database'
@@ -52,30 +53,38 @@ export default function GeneratePage() {
   const [results, setResults] = useState<GenerateApplicationResponse | null>(null)
   const [activeTab, setActiveTab] = useState<ResultTab>('proposal')
 
+  // Load resumes from Supabase for the current authenticated user
   useEffect(() => {
-    loadResumes()
-  }, [])
+    async function loadResumes() {
+      try {
+        const user = await getClientCurrentUser()
+        if (!user) {
+          toast({
+            title: 'Please sign in first',
+            variant: 'destructive',
+          })
+          router.push('/login')
+          return
+        }
 
-  async function loadResumes() {
-    try {
-      const user = await getCurrentUser()
-      if (!user) return
-
-      const data = await getUserResumes(user.id)
-      setResumes(data)
-
-      if (data.length > 0 && !selectedResumeId) {
-        setSelectedResumeId(data[0].id)
+        const data = await getClientResumes(user.id)
+        setResumes(data)
+        if (data.length > 0) {
+          setSelectedResumeId((prev) => prev || data[0].id)
+        }
+      } catch (error) {
+        toast({
+          title: 'Failed to load resumes',
+          description: 'Please try again',
+          variant: 'destructive',
+        })
+      } finally {
+        setIsLoading(false)
       }
-    } catch (error) {
-      toast({
-        title: 'Failed to load resumes',
-        variant: 'destructive',
-      })
-    } finally {
-      setIsLoading(false)
     }
-  }
+
+    loadResumes()
+  }, [router, toast])
 
   async function handleGenerate() {
     if (!formData.company.trim() || !formData.role.trim() || !formData.jobDescription.trim() || !selectedResumeId) {
@@ -87,16 +96,17 @@ export default function GeneratePage() {
       return
     }
 
+    const selectedResume = resumes.find(r => r.id === selectedResumeId)
+    if (!selectedResume) {
+      toast({
+        title: 'Resume not found',
+        variant: 'destructive',
+      })
+      return
+    }
+
     setIsGenerating(true)
     try {
-      const user = await getCurrentUser()
-      if (!user) return
-
-      const selectedResume = resumes.find(r => r.id === selectedResumeId)
-      if (!selectedResume) {
-        throw new Error('Selected resume not found')
-      }
-
       const response = await generateApplication({
         company: formData.company,
         role: formData.role,
@@ -127,10 +137,26 @@ export default function GeneratePage() {
 
     setIsSaving(true)
     try {
-      const user = await getCurrentUser()
-      if (!user) return
+      const user = await getClientCurrentUser()
+      if (!user) {
+        toast({
+          title: 'Please sign in first',
+          variant: 'destructive',
+        })
+        router.push('/login')
+        return
+      }
 
-      await createApplication(
+      const selectedResume = resumes.find(r => r.id === selectedResumeId)
+      if (!selectedResume) {
+        toast({
+          title: 'Resume not found',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      await createClientApplication(
         user.id,
         selectedResumeId,
         formData.company,
@@ -179,14 +205,6 @@ export default function GeneratePage() {
     handleGenerate()
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
-  }
-
   return (
     <div className="p-6 md:p-8">
       <motion.div
@@ -200,6 +218,11 @@ export default function GeneratePage() {
         </p>
       </motion.div>
 
+      {isLoading ? (
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      ) : (
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Form Section */}
         <motion.div
@@ -238,7 +261,7 @@ export default function GeneratePage() {
                   id="jobDescription"
                   value={formData.jobDescription}
                   onChange={(e) => setFormData({ ...formData, jobDescription: e.target.value })}
-                  placeholder="Paste the full job description here..."
+                  placeholder="Paste job description here..."
                   className="min-h-[200px]"
                   disabled={isGenerating}
                 />
@@ -306,7 +329,7 @@ export default function GeneratePage() {
                 key="empty"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
                 className="h-full"
               >
                 <Card className="h-full flex items-center justify-center p-12">
@@ -391,6 +414,7 @@ export default function GeneratePage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleCopy(results.proposal_message)}
+                            title="Copy to clipboard"
                           >
                             <Copy className="h-4 w-4" />
                           </Button>
@@ -414,6 +438,7 @@ export default function GeneratePage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleCopy(results.tailored_resume)}
+                            title="Copy to clipboard"
                           >
                             <Copy className="h-4 w-4" />
                           </Button>
@@ -437,12 +462,12 @@ export default function GeneratePage() {
                         <div>
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-sm font-medium">Match Score</span>
-                            <span className={`text-lg font-bold ${getMatchScoreColor(results.match_score)}`}>
+                            <span className={`text-2xl font-bold ${getMatchScoreColor(results.match_score)}`}>
                               {results.match_score}%
                             </span>
                           </div>
-                          <Progress value={results.match_score} className="h-2" />
                         </div>
+                        <Progress value={results.match_score} className="h-2" />
                         {results.missing_keywords.length > 0 && (
                           <div>
                             <h4 className="text-sm font-medium mb-2">
@@ -486,32 +511,33 @@ export default function GeneratePage() {
                       </CardContent>
                     </Card>
                   </TabsContent>
-                </Tabs>
 
-                {/* Save Button */}
-                <Button
-                  onClick={handleSaveToTracker}
-                  disabled={isSaving}
-                  size="lg"
-                  className="w-full"
-                >
-                  {isSaving ? (
-                    <>
-                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="mr-2 h-5 w-5" />
-                      Save to Tracker
-                    </>
-                  )}
-                </Button>
+                  {/* Save Button */}
+                  <Button
+                    onClick={handleSaveToTracker}
+                    disabled={isSaving || !results}
+                    size="lg"
+                    className="w-full"
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="mr-2 h-5 w-5" />
+                        Save to Tracker
+                      </>
+                    )}
+                  </Button>
+                </Tabs>
               </motion.div>
             )}
           </AnimatePresence>
         </motion.div>
       </div>
+      )}
     </div>
   )
 }

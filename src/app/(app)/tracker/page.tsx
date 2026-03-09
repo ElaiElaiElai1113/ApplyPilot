@@ -17,8 +17,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { getUserApplications, updateApplicationStatus, deleteApplication } from '@/lib/supabase/queries'
-import { getCurrentUser } from '@/lib/auth'
+import {
+  deleteClientApplication,
+  getClientApplications,
+  getClientCurrentUser,
+  updateClientApplicationStatus,
+} from '@/lib/supabase/client-queries'
 import { formatDate, getStatusColor, getMatchScoreColor } from '@/lib/utils'
 import type { Application } from '@/types/database'
 import {
@@ -73,10 +77,10 @@ export default function TrackerPage() {
 
   async function loadApplications() {
     try {
-      const user = await getCurrentUser()
+      const user = await getClientCurrentUser()
       if (!user) return
 
-      const data = await getUserApplications(user.id)
+      const data = await getClientApplications(user.id)
       setApplications(data)
     } catch (error) {
       toast({
@@ -91,7 +95,7 @@ export default function TrackerPage() {
   async function handleStatusChange(applicationId: string, newStatus: Application['status']) {
     setIsUpdating(applicationId)
     try {
-      await updateApplicationStatus(applicationId, newStatus)
+      await updateClientApplicationStatus(applicationId, newStatus)
       await loadApplications()
       toast({
         title: 'Status updated',
@@ -114,7 +118,7 @@ export default function TrackerPage() {
 
     setIsDeleting(applicationId)
     try {
-      await deleteApplication(applicationId)
+      await deleteClientApplication(applicationId)
       await loadApplications()
       toast({
         title: 'Application deleted',
