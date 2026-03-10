@@ -1,78 +1,72 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Send,
-  Loader2,
-  FileText,
-  Sparkles,
-  Copy,
-  RefreshCw,
-  Target,
-  MessageSquare,
   ArrowRight,
   Check,
-  BarChart3,
+  Copy,
+  FileText,
+  Loader2,
+  MessageCircleHeart,
+  RefreshCw,
+  Sparkles,
+  Target,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
-import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import {
-  extractJobPostingFromUrl,
-  generateApplication,
-  type GenerateApplicationResponse,
-} from '@/lib/ai'
-import {
-  createClientApplication,
-  getClientCurrentUser,
-  getClientResumes,
-} from '@/lib/supabase/client-queries'
-import { useToast } from '@/hooks/use-toast'
-import { useRouter } from 'next/navigation'
-import type { Resume } from '@/types/database'
-import { getMatchScoreColor } from '@/lib/utils'
-import { trackClientEvent } from '@/lib/analytics/client'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
+import { useToast } from '@/hooks/use-toast'
+import { createClientApplication, getClientCurrentUser, getClientResumes } from '@/lib/supabase/client-queries'
+import { extractJobPostingFromUrl, generateApplication, type GenerateApplicationResponse } from '@/lib/ai'
+import { trackClientEvent } from '@/lib/analytics/client'
+import type { Resume } from '@/types/database'
 
-type ResultTab = 'proposal' | 'resume' | 'match' | 'interview'
+type Step = 1 | 2 | 3
+
+const steps = [
+  { id: 1 as Step, title: 'Tell us about the role', body: 'A company name, title, and optional link is enough to begin.' },
+  { id: 2 as Step, title: 'Bring in the details', body: 'Choose a resume and paste the job description when you’re ready.' },
+  { id: 3 as Step, title: 'Let the AI write gently', body: 'We’ll review what you entered, then build your tailored package.' },
+]
+
+function getStrengthCopy(score: number) {
+  if (score >= 90) return 'This looks strong and ready for a final review.'
+  if (score >= 75) return 'You’re in a good place. A few tweaks could make this even stronger.'
+  if (score >= 60) return 'There is a solid foundation here. Let’s tighten a few details together.'
+  return 'This is a starting point. We can improve the fit with some gentle adjustments.'
+}
 
 export default function GeneratePage() {
   const router = useRouter()
   const { toast } = useToast()
-  const [resumes, setResumes] = useState<Resume[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [isImportingUrl, setIsImportingUrl] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [resumes, setResumes] = useState<Resume[]>([])
   const [selectedResumeId, setSelectedResumeId] = useState('')
+  const [results, setResults] = useState<GenerateApplicationResponse | null>(null)
+  const [step, setStep] = useState<Step>(1)
+  const [quotaMessage, setQuotaMessage] = useState('')
   const [formData, setFormData] = useState({
     jobUrl: '',
     company: '',
     role: '',
     jobDescription: '',
   })
-  const [results, setResults] = useState<GenerateApplicationResponse | null>(null)
-  const [activeTab, setActiveTab] = useState<ResultTab>('proposal')
-  const [quotaMessage, setQuotaMessage] = useState('')
-  const quotaExceeded = quotaMessage.toLowerCase().includes('monthly generation limit reached')
 
-  // Load resumes from Supabase for the current authenticated user
   useEffect(() => {
     async function loadResumes() {
       try {
         const user = await getClientCurrentUser()
         if (!user) {
-          toast({
-            title: 'Please sign in first',
-            variant: 'destructive',
-          })
           router.push('/login')
           return
         }
@@ -80,97 +74,40 @@ export default function GeneratePage() {
         const data = await getClientResumes(user.id)
         setResumes(data)
         if (data.length > 0) {
-          setSelectedResumeId((prev) => prev || data[0].id)
+          setSelectedResumeId(data[0].id)
         }
-      } catch (error) {
-        toast({
-          title: 'Failed to load resumes',
-          description: 'Please try again',
-          variant: 'destructive',
-        })
       } finally {
         setIsLoading(false)
       }
     }
 
-    loadResumes()
-  }, [router, toast])
+    void loadResumes()
+  }, [router])
 
-  async function handleGenerate() {
-    if (!formData.company.trim() || !formData.role.trim() || !formData.jobDescription.trim() || !selectedResumeId) {
-      toast({
-        title: 'Please fill in all fields',
-        description: 'Company, role, job description, and resume are required',
-        variant: 'destructive',
-      })
-      return
-    }
+  const quotaExceeded = quotaMessage.toLowerCase().includes('monthly generation limit reached')
+  const selectedResume = useMemo(
+    () => resumes.find((resume) => resume.id === selectedResumeId) || null,
+    [resumes, selectedResumeId]
+  )
 
-    const selectedResume = resumes.find(r => r.id === selectedResumeId)
-    if (!selectedResume) {
-      toast({
-        title: 'Resume not found',
-        variant: 'destructive',
-      })
-      return
-    }
+  function nextStep() {
+    setStep((current) => Math.min(3, current + 1) as Step)
+  }
 
-    setIsGenerating(true)
-    setQuotaMessage('')
-    void trackClientEvent('generation_started', {
-      company_length: formData.company.length,
-      role_length: formData.role.length,
-      job_description_length: formData.jobDescription.length,
-    })
-    try {
-      const response = await generateApplication({
-        company: formData.company,
-        role: formData.role,
-        jobDescription: formData.jobDescription,
-        resumeContent: selectedResume.content,
-      })
-
-      setResults(response)
-      setActiveTab('proposal')
-
-      toast({
-        title: 'Application generated!',
-        description: 'Review and save your application package',
-      })
-      void trackClientEvent('generation_succeeded', {
-        match_score: response.match_score,
-        missing_keywords_count: response.missing_keywords.length,
-      })
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Please try again later'
-      if (message.toLowerCase().includes('monthly generation limit reached')) {
-        setQuotaMessage(message)
-      }
-      toast({
-        title: 'Generation failed',
-        description: message,
-        variant: 'destructive',
-      })
-      void trackClientEvent('generation_failed', {
-        reason: message,
-      })
-    } finally {
-      setIsGenerating(false)
-    }
+  function previousStep() {
+    setStep((current) => Math.max(1, current - 1) as Step)
   }
 
   async function handleImportFromUrl() {
     if (!formData.jobUrl.trim()) {
       toast({
-        title: 'Please enter a job URL',
+        title: 'Add a job link first.',
         variant: 'destructive',
       })
       return
     }
 
     setIsImportingUrl(true)
-    void trackClientEvent('job_url_import_started')
     try {
       const extracted = await extractJobPostingFromUrl(formData.jobUrl)
       setFormData((prev) => ({
@@ -181,49 +118,75 @@ export default function GeneratePage() {
       }))
       toast({
         title: 'Job details imported',
-        description: 'Review the extracted description before generating.',
+        description: 'Take a quick look and adjust anything that feels off.',
       })
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to import job URL'
       toast({
         title: 'Import failed',
-        description: message,
+        description: error instanceof Error ? error.message : 'Please paste the job description instead.',
         variant: 'destructive',
       })
-      void trackClientEvent('job_url_import_failed', { reason: message })
     } finally {
       setIsImportingUrl(false)
     }
   }
 
+  async function handleGenerate() {
+    if (!formData.company.trim() || !formData.role.trim() || !formData.jobDescription.trim() || !selectedResume) {
+      toast({
+        title: 'We still need a few details.',
+        description: 'Please add the role, company, job description, and choose a resume.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsGenerating(true)
+    setQuotaMessage('')
+    try {
+      const response = await generateApplication({
+        company: formData.company,
+        role: formData.role,
+        jobDescription: formData.jobDescription,
+        resumeContent: selectedResume.content,
+      })
+      setResults(response)
+      toast({
+        title: 'Your package is ready',
+        description: 'Take your time reviewing it.',
+      })
+      void trackClientEvent('generation_succeeded', {
+        match_score: response.match_score,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Please try again later.'
+      if (message.toLowerCase().includes('monthly generation limit reached')) {
+        setQuotaMessage(message)
+      }
+      toast({
+        title: 'Generation paused',
+        description: message,
+        variant: 'destructive',
+      })
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
   async function handleSaveToTracker() {
-    if (!results) return
+    if (!results || !selectedResume) return
 
     setIsSaving(true)
     try {
       const user = await getClientCurrentUser()
       if (!user) {
-        toast({
-          title: 'Please sign in first',
-          variant: 'destructive',
-        })
         router.push('/login')
-        return
-      }
-
-      const selectedResume = resumes.find(r => r.id === selectedResumeId)
-      if (!selectedResume) {
-        toast({
-          title: 'Resume not found',
-          variant: 'destructive',
-        })
         return
       }
 
       await createClientApplication(
         user.id,
-        selectedResumeId,
+        selectedResume.id,
         formData.company,
         formData.role,
         formData.jobDescription,
@@ -235,511 +198,514 @@ export default function GeneratePage() {
       )
 
       toast({
-        title: 'Application saved!',
-        description: 'Your application has been added to the tracker',
+        title: 'Saved to your tracker',
+        description: 'Your application is ready whenever you want to revisit it.',
       })
-      void trackClientEvent('application_saved', {
-        company_length: formData.company.length,
-        role_length: formData.role.length,
-      })
-
       router.push('/tracker')
-    } catch (error) {
-      toast({
-        title: 'Failed to save',
-        description: 'Please try again',
-        variant: 'destructive',
-      })
     } finally {
       setIsSaving(false)
     }
   }
 
-  async function handleCopy(text: string) {
+  async function copyText(text: string, label: string) {
     try {
       await navigator.clipboard.writeText(text)
       toast({
-        title: 'Copied to clipboard',
+        title: `${label} copied`,
       })
-    } catch (error) {
+    } catch {
       toast({
-        title: 'Failed to copy',
+        title: 'Copy failed',
         variant: 'destructive',
       })
     }
   }
 
-  function handleRegenerate() {
-    toast({
-      title: 'Generating a replacement',
-      description: 'Your current results stay visible until the new version is ready.',
-    })
-    void handleGenerate()
-  }
-
-  function formatSections(text: string) {
-    return text
-      .split(/\n{2,}/)
-      .map((section) => section.trim())
-      .filter(Boolean)
-  }
-
-  function copyFullPackage() {
-    if (!results) return
-
-    const packageText = [
-      `Company: ${formData.company}`,
-      `Role: ${formData.role}`,
-      '',
-      'Cover Letter',
-      results.proposal_message,
-      '',
-      'Tailored Resume',
-      results.tailored_resume,
-      '',
-      `Match Score: ${results.match_score}%`,
-      `Missing Keywords: ${results.missing_keywords.join(', ') || 'None identified'}`,
-      '',
-      'Interview Questions',
-      ...results.interview_questions.map((question, index) => `${index + 1}. ${question}`),
-    ].join('\n')
-
-    void handleCopy(packageText)
-  }
-
-  function downloadPackage() {
-    if (!results) return
-
-    const blob = new Blob(
-      [[
-        `Cover Letter\n\n${results.proposal_message}\n\n`,
-        `Tailored Resume\n\n${results.tailored_resume}\n\n`,
-        `Match Score: ${results.match_score}%\n`,
-        `Missing Keywords: ${results.missing_keywords.join(', ') || 'None identified'}\n\n`,
-        `Interview Questions\n${results.interview_questions.map((question, index) => `${index + 1}. ${question}`).join('\n')}`,
-      ].join('')],
-      { type: 'text/plain;charset=utf-8' }
+  if (isLoading) {
+    return (
+      <div className="grid gap-6 p-6 md:p-8 lg:grid-cols-[0.95fr_1.05fr]">
+        <Skeleton className="h-[720px] rounded-[2rem]" />
+        <Skeleton className="h-[720px] rounded-[2rem]" />
+      </div>
     )
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${formData.company || 'application'}-${formData.role || 'package'}.txt`
-    anchor.click()
-    URL.revokeObjectURL(url)
   }
 
   return (
-    <div className="p-6 md:p-8">
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
+    <div className="grid gap-6 p-6 md:p-8 lg:grid-cols-[0.95fr_1.05fr]">
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mb-6"
+        transition={{ type: 'spring', stiffness: 140, damping: 18 }}
+        className="space-y-6"
       >
-        <h1 className="text-3xl font-bold mb-2">Generate Application</h1>
-        <p className="text-muted-foreground">
-          Create a tailored application package with AI assistance
-        </p>
-      </motion.div>
+        <Card className="rounded-[2.2rem] border-[#eadfd3] bg-[#fff9f3] shadow-[0_24px_70px_rgba(214,195,180,0.16)]">
+          <CardHeader className="p-7">
+            <div className="rounded-full bg-[#eef5e8] px-4 py-2 text-sm text-[#6e8567] w-fit">
+              Gentle generation wizard
+            </div>
+            <CardTitle className="mt-4 font-serif text-5xl text-[#524236]">
+              Let&apos;s build this together.
+            </CardTitle>
+            <CardDescription className="max-w-xl text-base leading-8 text-[#746659]">
+              We’ll move in small, clear steps so this part feels manageable and human.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 px-7 pb-7">
+            {steps.map((item) => {
+              const active = step === item.id
+              const complete = step > item.id
 
-      {isLoading ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Skeleton className="h-[640px] rounded-xl" />
-          <Skeleton className="h-[640px] rounded-xl" />
-        </div>
-      ) : (
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Form Section */}
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-        >
-            <Card>
-              <CardHeader>
-                <CardTitle>Job Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {quotaMessage ? (
-                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-                    <p className="font-medium">Monthly generation limit reached</p>
-                    <p className="mt-1 text-sm text-muted-foreground">{quotaMessage}</p>
-                    <Button asChild className="mt-3" size="sm">
-                      <a href="/pricing">Upgrade or view pricing</a>
+              return (
+                <div
+                  key={item.id}
+                  className={`rounded-[1.7rem] border p-4 transition-colors ${
+                    active
+                      ? 'border-[#d8cabc] bg-white'
+                      : complete
+                        ? 'border-[#dbe7d3] bg-[#eef5e8]'
+                        : 'border-[#efe3d7] bg-[#fffaf5]'
+                  }`}
+                >
+                  <div className="flex items-start gap-4">
+                    <div
+                      className={`flex h-10 w-10 items-center justify-center rounded-full text-sm ${
+                        complete ? 'bg-[#86a27e] text-white' : active ? 'bg-[#f3ebe3] text-[#8d7a6d]' : 'bg-[#f5f0ea] text-[#b39f90]'
+                      }`}
+                    >
+                      {complete ? <Check className="h-4 w-4" /> : item.id}
+                    </div>
+                    <div>
+                      <p className="font-medium text-[#5c4c40]">{item.title}</p>
+                      <p className="mt-1 text-sm leading-7 text-[#7c6b5e]">{item.body}</p>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-[2.2rem] border-[#eadfd3] bg-white/85 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
+          <CardContent className="space-y-5 p-7">
+            {step === 1 ? (
+              <>
+                <StepTitle
+                  title="Start with the basics"
+                  body="A company name and role title already gives the AI a gentle sense of direction."
+                />
+                <Field label="Job posting link (optional)">
+                  <div className="flex gap-3">
+                    <Input
+                      value={formData.jobUrl}
+                      onChange={(event) => setFormData((prev) => ({ ...prev, jobUrl: event.target.value }))}
+                      placeholder="Paste a LinkedIn or job board link"
+                      className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]"
+                    />
+                    <Button
+                      variant="ghost"
+                      className="rounded-full border border-[#e2d6cb] bg-[#fffaf5] text-[#6d5b4f] hover:bg-[#f7f1ea]"
+                      onClick={handleImportFromUrl}
+                      disabled={isImportingUrl}
+                    >
+                      {isImportingUrl ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Importing
+                        </>
+                      ) : (
+                        'Import'
+                      )}
                     </Button>
                   </div>
-                ) : null}
-                <div className="space-y-2">
-                <Label htmlFor="jobUrl">Job Posting URL (Optional)</Label>
-                <div className="flex gap-2">
+                </Field>
+                <Field label="Company">
                   <Input
-                    id="jobUrl"
-                    value={formData.jobUrl}
-                    onChange={(e) => setFormData({ ...formData, jobUrl: e.target.value })}
-                    placeholder="https://www.linkedin.com/jobs/view/..."
-                    disabled={isGenerating || isImportingUrl}
+                    value={formData.company}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, company: event.target.value }))}
+                    placeholder="e.g. Acme VA Agency"
+                    className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]"
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handleImportFromUrl}
-                    disabled={isGenerating || isImportingUrl}
-                  >
-                    {isImportingUrl ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      'Import'
-                    )}
-                  </Button>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="company">Company Name *</Label>
-                <Input
-                  id="company"
-                  value={formData.company}
-                  onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                  placeholder="e.g., Google"
-                  disabled={isGenerating}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="role">Role Title *</Label>
-                <Input
-                  id="role"
-                  value={formData.role}
-                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-                  placeholder="e.g., Senior Software Engineer"
-                  disabled={isGenerating}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="jobDescription">Job Description *</Label>
-                <Textarea
-                  id="jobDescription"
-                  value={formData.jobDescription}
-                  onChange={(e) => setFormData({ ...formData, jobDescription: e.target.value })}
-                  placeholder="Paste job description here..."
-                  className="min-h-[200px]"
-                  disabled={isGenerating}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="resume">Select Resume *</Label>
-                {resumes.length === 0 ? (
-                  <div className="text-sm text-muted-foreground p-3 border rounded-md bg-muted/50">
-                    No resumes found.{' '}
-                    <a href="/resumes" className="text-primary hover:underline">
-                      Add one to your vault
-                    </a>
-                  </div>
-                ) : (
-                  <Select
-                    value={selectedResumeId}
-                    onValueChange={setSelectedResumeId}
-                    disabled={isGenerating}
-                  >
-                    <SelectTrigger id="resume">
-                      <SelectValue placeholder="Select a resume" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {resumes.map((resume) => (
-                        <SelectItem key={resume.id} value={resume.id}>
-                          {resume.title}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <Button
-                onClick={handleGenerate}
-                disabled={isGenerating || isImportingUrl || resumes.length === 0 || quotaExceeded}
-                className="w-full"
-                size="lg"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="mr-2 h-5 w-5" />
-                    {quotaExceeded ? 'Upgrade to continue generating' : 'Generate Application'}
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </>
-                )}
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
+                </Field>
+                <Field label="Role title">
+                  <Input
+                    value={formData.role}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, role: event.target.value }))}
+                    placeholder="e.g. Executive Assistant or Virtual Assistant"
+                    className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]"
+                  />
+                </Field>
+              </>
+            ) : null}
 
-        {/* Results Section */}
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <AnimatePresence mode="wait">
-            {!results ? (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="h-full"
-              >
-                <Card className="h-full flex items-center justify-center p-12">
-                  <div className="text-center">
-                    {quotaExceeded ? (
-                      <>
-                        <Target className="h-16 w-16 mx-auto text-primary mb-4" />
-                        <h3 className="text-xl font-semibold mb-2">Upgrade to keep applying</h3>
-                        <p className="text-muted-foreground max-w-md">
-                          You&apos;ve used this month&apos;s generation allowance. Upgrade to unlock more AI-generated application packages.
-                        </p>
-                        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-                          <Button asChild>
-                            <a href="/pricing">See plans</a>
-                          </Button>
-                          <Button
-                            variant="outline"
-                            onClick={() => setQuotaMessage('')}
-                          >
-                            Keep editing job details
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <Send className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                        <h3 className="text-xl font-semibold mb-2">
-                          Ready to Generate
-                        </h3>
-                        <p className="text-muted-foreground">
-                          Fill in the job details and click generate to create your
-                          application package
-                        </p>
-                      </>
-                    )}
+            {step === 2 ? (
+              <>
+                <StepTitle
+                  title="Bring in the role details"
+                  body="Choose which resume version you want to use, then paste the job description so we can tailor things kindly."
+                />
+                <Field label="Choose a resume">
+                  {resumes.length === 0 ? (
+                    <div className="rounded-[1.5rem] border border-dashed border-[#d8cabc] bg-[#fffaf4] p-5 text-sm text-[#7b6a5d]">
+                      Your resume shelf is still empty. Add one in the Resume Vault first.
+                    </div>
+                  ) : (
+                    <Select value={selectedResumeId} onValueChange={setSelectedResumeId}>
+                      <SelectTrigger className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]">
+                        <SelectValue placeholder="Choose a resume" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {resumes.map((resume) => (
+                          <SelectItem key={resume.id} value={resume.id}>
+                            {resume.title}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </Field>
+                <Field label="Job description">
+                  <Textarea
+                    value={formData.jobDescription}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, jobDescription: event.target.value }))}
+                    placeholder="Paste the role details right here..."
+                    className="min-h-[240px] rounded-[1.8rem] border-[#e3d8cd] bg-[#fffcf8] p-5 text-sm leading-7"
+                  />
+                </Field>
+              </>
+            ) : null}
+
+            {step === 3 ? (
+              <>
+                <StepTitle
+                  title="A final friendly review"
+                  body="We’ll use the details below to create a tailored cover letter, resume, and supportive strength meter."
+                />
+                <div className="space-y-4 rounded-[1.8rem] border border-[#efe3d7] bg-[#fffaf5] p-5">
+                  <SummaryRow label="Company" value={formData.company || 'Not added yet'} />
+                  <SummaryRow label="Role" value={formData.role || 'Not added yet'} />
+                  <SummaryRow label="Resume" value={selectedResume?.title || 'No resume selected'} />
+                  <SummaryRow
+                    label="Job description"
+                    value={formData.jobDescription ? `${formData.jobDescription.length} characters added` : 'Not added yet'}
+                  />
+                </div>
+                {quotaExceeded ? (
+                  <div className="rounded-[1.7rem] border border-[#f1d8cd] bg-[#fff1eb] p-5">
+                    <p className="font-medium text-[#8c5e4d]">You’ve reached this month’s generation allowance.</p>
+                    <p className="mt-2 text-sm leading-7 text-[#8c6d5f]">{quotaMessage}</p>
+                    <LinkButton href="/pricing" label="View upgrade options" />
                   </div>
-                </Card>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="results"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                className="space-y-4"
+                ) : null}
+              </>
+            ) : null}
+
+            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
+              <Button
+                variant="ghost"
+                className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
+                onClick={previousStep}
+                disabled={step === 1}
               >
-                {/* Match Score Card */}
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <Target className="h-6 w-6 text-primary" />
-                        <div>
-                          <p className="text-sm text-muted-foreground">Match Score</p>
-                          <p className={`text-3xl font-bold ${getMatchScoreColor(results.match_score)}`}>
-                            {results.match_score}%
-                          </p>
+                Back
+              </Button>
+
+              {step < 3 ? (
+                <Button
+                  className="rounded-full bg-[#86a27e] px-6 text-white hover:bg-[#779570]"
+                  onClick={nextStep}
+                >
+                  Next step
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  className="rounded-full bg-[#d98f74] px-6 text-white hover:bg-[#cf8064]"
+                  onClick={handleGenerate}
+                  disabled={isGenerating || quotaExceeded || resumes.length === 0}
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Writing your package...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Generate softly
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.section>
+
+      <motion.section
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 140, damping: 18, delay: 0.08 }}
+      >
+        <Card className="min-h-[720px] rounded-[2.2rem] border-[#eadfd3] bg-white/85 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
+          <CardContent className="h-full p-7">
+            <AnimatePresence mode="wait">
+              {isGenerating ? (
+                <motion.div
+                  key="generating"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  className="flex h-full min-h-[620px] flex-col items-center justify-center text-center"
+                >
+                  <div className="relative h-24 w-24">
+                    <motion.div
+                      className="absolute inset-0 rounded-full bg-[#e5efdc]"
+                      animate={{ scale: [1, 1.16, 1], opacity: [0.8, 0.45, 0.8] }}
+                      transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                    <motion.div
+                      className="absolute inset-4 rounded-full bg-[#f7e4db]"
+                      animate={{ scale: [1, 1.08, 1], opacity: [0.9, 0.55, 0.9] }}
+                      transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <MessageCircleHeart className="h-9 w-9 text-[#8a7463]" />
+                    </div>
+                  </div>
+                  <h2 className="mt-8 font-serif text-4xl text-[#56463b]">
+                    Our AI is thoughtfully writing a tailored letter for you...
+                  </h2>
+                  <p className="mt-4 max-w-md text-sm leading-7 text-[#79695c]">
+                    We&apos;re reading the job description, finding your strongest experience, and shaping a warm, professional draft.
+                  </p>
+                  <div className="mt-6 flex items-center gap-2">
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#86a27e]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#d9b8a8] [animation-delay:120ms]" />
+                    <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#c8b6dd] [animation-delay:240ms]" />
+                  </div>
+                </motion.div>
+              ) : results ? (
+                <motion.div
+                  key="results"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 12 }}
+                  className="space-y-6"
+                >
+                  <div className="rounded-[1.8rem] border border-[#eadfd3] bg-[#fff9f3] p-5">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Strength meter</p>
+                        <div className="mt-3 flex items-center gap-4">
+                          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eef5e8]">
+                            <span className="font-serif text-3xl text-[#4f6149]">{results.match_score}</span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-[#5c4c40]">{getStrengthCopy(results.match_score)}</p>
+                            <p className="mt-1 text-sm text-[#7b6a5d]">This meter is a gentle guide, not a grade.</p>
+                          </div>
                         </div>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="outline" onClick={copyFullPackage}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy full package
-                        </Button>
-                        <Button variant="outline" onClick={downloadPackage}>
-                          <FileText className="mr-2 h-4 w-4" />
-                          Download .txt
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          variant="ghost"
+                          className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
+                          onClick={() => {
+                            toast({
+                              title: 'Creating a fresh version',
+                              description: 'Your current draft will stay visible until the new one is ready.',
+                            })
+                            void handleGenerate()
+                          }}
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Re-generate
                         </Button>
                         <Button
-                          variant="outline"
-                          onClick={handleRegenerate}
-                          disabled={isGenerating}
-                          aria-label="Regenerate and replace current results"
+                          className="rounded-full bg-[#86a27e] px-6 text-white hover:bg-[#779570]"
+                          onClick={handleSaveToTracker}
+                          disabled={isSaving}
                         >
-                          {isGenerating ? (
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          {isSaving ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Saving...
+                            </>
                           ) : (
-                            <RefreshCw className="mr-2 h-4 w-4" />
+                            <>
+                              <Check className="mr-2 h-4 w-4" />
+                              Save to tracker
+                            </>
                           )}
-                          Regenerate
                         </Button>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
+                    <div className="mt-5 h-3 overflow-hidden rounded-full bg-[#efe7df]">
+                      <motion.div
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.max(8, results.match_score)}%` }}
+                        transition={{ type: 'spring', stiffness: 120, damping: 18 }}
+                        className="h-full rounded-full bg-[linear-gradient(90deg,#86a27e,#d9b86c)]"
+                      />
+                    </div>
+                  </div>
 
-                {/* Tabs */}
-                <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as ResultTab)}>
-                  <TabsList className="grid w-full grid-cols-4">
-                    <TabsTrigger value="proposal">
-                      <MessageSquare className="mr-2 h-4 w-4" />
-                      Cover Letter
-                    </TabsTrigger>
-                    <TabsTrigger value="resume">
-                      <FileText className="mr-2 h-4 w-4" />
-                      Resume
-                    </TabsTrigger>
-                    <TabsTrigger value="match">
-                      <BarChart3 className="mr-2 h-4 w-4" />
-                      Analysis
-                    </TabsTrigger>
-                    <TabsTrigger value="interview">
-                      <Target className="mr-2 h-4 w-4" />
-                      Interview
-                    </TabsTrigger>
-                  </TabsList>
+                  <ResultSection
+                    title="Your tailored cover letter"
+                    actionLabel="Copy letter"
+                    onAction={() => void copyText(results.proposal_message, 'Cover letter')}
+                  >
+                    {results.proposal_message}
+                  </ResultSection>
 
-                  {/* Proposal Tab */}
-                  <TabsContent value="proposal" className="mt-4">
-                    <Card>
+                  <ResultSection
+                    title="Your refreshed resume"
+                    actionLabel="Copy resume"
+                    onAction={() => void copyText(results.tailored_resume, 'Tailored resume')}
+                  >
+                    {results.tailored_resume}
+                  </ResultSection>
+
+                  <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+                    <Card className="rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
                       <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-lg">Cover Letter</CardTitle>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleCopy(results.proposal_message)}
-                            aria-label="Copy cover letter"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
+                        <CardTitle className="font-serif text-3xl text-[#56463b]">Helpful nudges</CardTitle>
+                        <CardDescription className="text-[#7b6a5d]">
+                          These are the areas the job description mentions that could use a little more emphasis.
+                        </CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <div className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">
-                          {results.proposal_message.trim().split(/\s+/).length} words
-                        </div>
-                        <div className="max-h-[400px] space-y-4 overflow-y-auto text-sm leading-relaxed">
-                          {formatSections(results.proposal_message).map((paragraph, index) => (
-                            <p key={index}>{paragraph}</p>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  {/* Resume Tab */}
-                  <TabsContent value="resume" className="mt-4">
-                    <Card>
-                      <CardHeader>
-                        <div className="flex items-center justify-between">
-                          <CardTitle className="text-lg">Tailored Resume</CardTitle>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleCopy(results.tailored_resume)}
-                            aria-label="Copy tailored resume"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">
-                          {results.tailored_resume.trim().split(/\s+/).length} words
-                        </div>
-                        <div className="max-h-[400px] space-y-3 overflow-y-auto text-sm leading-relaxed">
-                          {formatSections(results.tailored_resume).map((paragraph, index) => (
-                            <p key={index} className="whitespace-pre-wrap">
-                              {paragraph}
-                            </p>
-                          ))}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </TabsContent>
-
-                  {/* Match Tab */}
-                  <TabsContent value="match" className="mt-4">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="text-lg">Match Analysis</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-sm font-medium">Match Score</span>
-                            <span className={`text-2xl font-bold ${getMatchScoreColor(results.match_score)}`}>
-                              {results.match_score}%
+                      <CardContent className="flex flex-wrap gap-3">
+                        {results.missing_keywords.length > 0 ? (
+                          results.missing_keywords.map((keyword) => (
+                            <span key={keyword} className="rounded-full bg-[#efe5f7] px-4 py-2 text-sm text-[#79638a]">
+                              {keyword}
                             </span>
-                          </div>
-                        </div>
-                        <Progress value={results.match_score} className="h-2" />
-                        {results.missing_keywords.length > 0 && (
-                          <div>
-                            <h4 className="text-sm font-medium mb-2">
-                              Missing Keywords ({results.missing_keywords.length})
-                            </h4>
-                            <div className="flex flex-wrap gap-2">
-                              {results.missing_keywords.map((keyword, i) => (
-                                <Badge key={i} variant="outline">
-                                  {keyword}
-                                </Badge>
-                              ))}
-                            </div>
-                          </div>
+                          ))
+                        ) : (
+                          <p className="text-sm leading-7 text-[#7b6a5d]">Nothing major stands out. Your resume already covers this role nicely.</p>
                         )}
                       </CardContent>
                     </Card>
-                  </TabsContent>
 
-                  {/* Interview Tab */}
-                  <TabsContent value="interview" className="mt-4">
-                    <Card>
+                    <Card className="rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
                       <CardHeader>
-                        <CardTitle className="text-lg">
-                          Interview Preparation
-                        </CardTitle>
+                        <CardTitle className="font-serif text-3xl text-[#56463b]">Interview prep</CardTitle>
+                        <CardDescription className="text-[#7b6a5d]">
+                          Save these for your next practice session or interview prep block.
+                        </CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <div className="space-y-3">
-                          {results.interview_questions.map((question, i) => (
-                            <div
-                              key={i}
-                              className="flex gap-3 p-3 rounded-lg bg-muted/50"
-                            >
-                              <Badge className="h-6 w-6 rounded-full flex items-center justify-center shrink-0">
-                                {i + 1}
-                              </Badge>
-                              <p className="text-sm">{question}</p>
-                            </div>
-                          ))}
-                        </div>
+                      <CardContent className="space-y-3">
+                        {results.interview_questions.map((question, index) => (
+                          <div key={question} className="rounded-[1.4rem] border border-[#efe3d7] bg-[#fff9f3] p-4">
+                            <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Prompt {index + 1}</p>
+                            <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{question}</p>
+                          </div>
+                        ))}
                       </CardContent>
                     </Card>
-                  </TabsContent>
-
-                  {/* Save Button */}
-                  <Button
-                    onClick={handleSaveToTracker}
-                    disabled={isSaving || !results}
-                    size="lg"
-                    className="w-full"
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="mr-2 h-5 w-5" />
-                        Save to Tracker
-                      </>
-                    )}
-                  </Button>
-                </Tabs>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </motion.div>
-      </div>
-      )}
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="empty"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 8 }}
+                  className="flex h-full min-h-[620px] flex-col items-center justify-center rounded-[2rem] border border-dashed border-[#dbcdbf] bg-[#fffaf4] px-10 text-center"
+                >
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#e5efdc] text-[#6d8466]">
+                    <Target className="h-7 w-7" />
+                  </div>
+                  <h2 className="mt-6 font-serif text-4xl text-[#58483d]">Your personalized package will appear here.</h2>
+                  <p className="mt-4 max-w-md text-sm leading-7 text-[#7a695c]">
+                    Once we generate your draft, you’ll see a gentle strength meter, tailored writing, and easy next steps.
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </CardContent>
+        </Card>
+      </motion.section>
     </div>
+  )
+}
+
+function StepTitle({ title, body }: { title: string; body: string }) {
+  return (
+    <div>
+      <h2 className="font-serif text-3xl text-[#56463b]">{title}</h2>
+      <p className="mt-2 text-sm leading-7 text-[#7b6a5d]">{body}</p>
+    </div>
+  )
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      {children}
+    </div>
+  )
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+      <span className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">{label}</span>
+      <span className="text-sm text-[#68584d]">{value}</span>
+    </div>
+  )
+}
+
+function ResultSection({
+  title,
+  actionLabel,
+  onAction,
+  children,
+}: {
+  title: string
+  actionLabel: string
+  onAction: () => void
+  children: string
+}) {
+  return (
+    <Card className="rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div>
+          <CardTitle className="font-serif text-3xl text-[#56463b]">{title}</CardTitle>
+          <CardDescription className="text-[#7b6a5d]">
+            Review gently, then copy any part you want to refine.
+          </CardDescription>
+        </div>
+        <Button
+          variant="ghost"
+          className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
+          onClick={onAction}
+        >
+          <Copy className="mr-2 h-4 w-4" />
+          {actionLabel}
+        </Button>
+      </CardHeader>
+      <CardContent className="rounded-b-[2rem] bg-[#fffaf5] p-6 text-sm leading-8 text-[#66564a] whitespace-pre-wrap">
+        {children}
+      </CardContent>
+    </Card>
+  )
+}
+
+function LinkButton({ href, label }: { href: string; label: string }) {
+  return (
+    <a
+      href={href}
+      className="mt-4 inline-flex rounded-full bg-[#d98f74] px-5 py-3 text-sm text-white transition-colors hover:bg-[#cf8064]"
+    >
+      {label}
+    </a>
   )
 }

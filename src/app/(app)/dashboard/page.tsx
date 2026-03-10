@@ -1,49 +1,35 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
-  Briefcase,
-  TrendingUp,
-  FileText,
-  Send,
   ArrowRight,
   CheckCircle2,
-  UserCircle2,
+  FileText,
+  HeartHandshake,
+  Send,
+  Sparkles,
 } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getClientCurrentUser, getClientDashboardStats, getClientResumes } from '@/lib/supabase/client-queries'
-import { formatDate, getStatusColor, getMatchScoreColor } from '@/lib/utils'
-import type { Application } from '@/types/database'
-import type { LucideIcon } from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getClientCurrentUser, getClientDashboardStats, getClientResumes } from '@/lib/supabase/client-queries'
+import { formatDate } from '@/lib/utils'
+import type { Application } from '@/types/database'
 
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-    },
-  },
-}
+function getGreeting(name: string) {
+  const hour = new Date().getHours()
+  const dayPart =
+    hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
 
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.5,
-    },
-  },
+  return `${dayPart}, ${name}. Let’s land your next client.`
 }
 
 export default function DashboardPage() {
+  const [isLoading, setIsLoading] = useState(true)
+  const [userName, setUserName] = useState('friend')
   const [stats, setStats] = useState<{
     applicationsThisWeek: number
     averageMatchScore: number
@@ -51,11 +37,9 @@ export default function DashboardPage() {
     recentApplications: Application[]
     resumeCount: number
   } | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [userName, setUserName] = useState('there')
 
   useEffect(() => {
-    async function loadData() {
+    async function load() {
       try {
         const user = await getClientCurrentUser()
         if (!user) return
@@ -63,266 +47,269 @@ export default function DashboardPage() {
         setUserName(
           typeof user.user_metadata?.full_name === 'string' && user.user_metadata.full_name.trim()
             ? user.user_metadata.full_name.split(' ')[0]
-            : user.email?.split('@')[0] || 'there'
+            : user.email?.split('@')[0] || 'friend'
         )
 
-        const [data, resumes] = await Promise.all([
+        const [dashboardData, resumes] = await Promise.all([
           getClientDashboardStats(user.id),
           getClientResumes(user.id),
         ])
+
         setStats({
-          ...data,
+          ...dashboardData,
           resumeCount: resumes.length,
         })
-      } catch (error) {
-        console.error('Failed to load dashboard:', error)
       } finally {
         setIsLoading(false)
       }
     }
-    loadData()
+
+    void load()
   }, [])
+
+  const encouragement = useMemo(() => getGreeting(userName), [userName])
+  const checklist = [
+    {
+      label: 'Add your master resume',
+      done: (stats?.resumeCount || 0) > 0,
+      href: '/resumes',
+    },
+    {
+      label: 'Generate your first tailored package',
+      done: (stats?.totalApplications || 0) > 0,
+      href: (stats?.resumeCount || 0) > 0 ? '/generate' : '/resumes',
+    },
+    {
+      label: 'Track a live application',
+      done: (stats?.totalApplications || 0) > 0,
+      href: (stats?.totalApplications || 0) > 0 ? '/tracker' : '/generate',
+    },
+  ]
 
   if (isLoading) {
     return (
-      <div className="p-6 md:p-8 space-y-8">
-        <div className="space-y-2">
-          <Skeleton className="h-9 w-40" />
-          <Skeleton className="h-5 w-72" />
+      <div className="space-y-8 p-6 md:p-8">
+        <div className="space-y-3">
+          <Skeleton className="h-12 w-80 rounded-full" />
+          <Skeleton className="h-5 w-72 rounded-full" />
         </div>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <Skeleton className="h-32 rounded-xl" />
-          <Skeleton className="h-32 rounded-xl" />
-          <Skeleton className="h-32 rounded-xl" />
+        <Skeleton className="h-40 rounded-[2rem]" />
+        <div className="grid gap-5 lg:grid-cols-3">
+          <Skeleton className="h-36 rounded-[2rem]" />
+          <Skeleton className="h-36 rounded-[2rem]" />
+          <Skeleton className="h-36 rounded-[2rem]" />
         </div>
-        <Skeleton className="h-80 rounded-xl" />
+        <Skeleton className="h-72 rounded-[2rem]" />
       </div>
     )
   }
 
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="p-6 md:p-8 space-y-8"
-    >
-      {/* Header */}
-      <motion.div variants={itemVariants} className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Welcome back, {userName}! Here&apos;s your job application overview.
+    <div className="space-y-8 p-6 md:p-8">
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 140, damping: 18 }}
+        className="grid gap-6 lg:grid-cols-[1.08fr_0.92fr]"
+      >
+        <div className="rounded-[2.2rem] border border-[#eadfd3] bg-[#fff9f3] p-7 shadow-[0_24px_70px_rgba(214,195,180,0.16)]">
+          <div className="inline-flex items-center gap-2 rounded-full bg-[#eef5e8] px-4 py-2 text-sm text-[#6e8567]">
+            <Sparkles className="h-4 w-4" />
+            Calm progress, not pressure
+          </div>
+          <h1 className="mt-5 font-serif text-5xl leading-tight text-[#524236]">
+            {encouragement}
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-8 text-[#746659]">
+            Everything here is designed to keep your search organized and gentle. We’ll help you
+            move one thoughtful step at a time.
           </p>
+          <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+            <Link href={(stats?.resumeCount || 0) > 0 ? '/generate' : '/resumes'}>
+              <Button className="h-14 rounded-full bg-[#86a27e] px-8 text-base text-white hover:bg-[#779570]">
+                {(stats?.resumeCount || 0) > 0 ? 'Create next application' : 'Add your first resume'}
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </Link>
+            <Link href="/tracker">
+              <Button
+                variant="ghost"
+                className="h-14 rounded-full border border-[#e2d6cb] bg-white/90 px-8 text-base text-[#6d5b4f] hover:bg-[#f7f1ea]"
+              >
+                Open tracker
+              </Button>
+            </Link>
+          </div>
         </div>
-        <Link href={stats?.resumeCount ? '/generate' : '/resumes'}>
-          <Button size="lg">
-            {stats?.resumeCount ? <Send className="mr-2 h-5 w-5" /> : <FileText className="mr-2 h-5 w-5" />}
-            {stats?.resumeCount ? 'Quick Generate' : 'Add Your Resume First'}
-          </Button>
-        </Link>
-      </motion.div>
 
-      {(stats?.resumeCount === 0 || (stats?.totalApplications || 0) === 0) ? (
-        <motion.div variants={itemVariants}>
-          <Card className="border-primary/20 bg-primary/5">
-            <CardHeader>
-              <CardTitle>First-run checklist</CardTitle>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-3">
-              <ChecklistItem
-                icon={FileText}
-                title="Add your resume"
-                description="Upload or paste your master resume into the vault."
-                done={(stats?.resumeCount || 0) > 0}
-                href="/resumes"
-              />
-              <ChecklistItem
-                icon={Send}
-                title="Generate your first package"
-                description="Create a tailored cover letter and resume from a real job description."
-                done={(stats?.totalApplications || 0) > 0}
-                href={stats?.resumeCount ? '/generate' : '/resumes'}
-              />
-              <ChecklistItem
-                icon={UserCircle2}
-                title="Track progress"
-                description="Save your first result so the tracker becomes useful immediately."
-                done={(stats?.totalApplications || 0) > 0}
-                href={(stats?.totalApplications || 0) > 0 ? '/tracker' : '/generate'}
-              />
-            </CardContent>
-          </Card>
-        </motion.div>
-      ) : null}
-
-      {/* Stats Cards */}
-      <motion.div variants={itemVariants}>
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <StatsCard
-            title="Applications This Week"
-            value={stats?.applicationsThisWeek || 0}
-            icon={Briefcase}
-            color="bg-blue-500/10 text-blue-500"
-          />
-          <StatsCard
-            title="Average Match Score"
-            value={`${stats?.averageMatchScore || 0}%`}
-            icon={TrendingUp}
-            color="bg-purple-500/10 text-purple-500"
-          />
-          <StatsCard
-            title="Total Applications"
-            value={stats?.totalApplications || 0}
-            icon={FileText}
-            color="bg-green-500/10 text-green-500"
-          />
+        <div className="rounded-[2.2rem] border border-[#eadfd3] bg-white/85 p-6 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
+          <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Your gentle checklist</p>
+          <div className="mt-5 space-y-4">
+            {checklist.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                className="flex items-center justify-between rounded-[1.6rem] border border-[#efe3d7] bg-[#fffaf5] px-4 py-4 transition-transform hover:-translate-y-0.5"
+              >
+                <div className="flex items-center gap-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-full ${item.done ? 'bg-[#e5efdc] text-[#6c8265]' : 'bg-[#f3ebe3] text-[#9a8678]'}`}>
+                    <CheckCircle2 className="h-4 w-4" />
+                  </div>
+                  <span className="text-sm text-[#655549]">{item.label}</span>
+                </div>
+                <Badge className={item.done ? 'rounded-full bg-[#e5efdc] text-[#6c8265]' : 'rounded-full bg-[#f4ece4] text-[#8d7a6d]'}>
+                  {item.done ? 'Done' : 'Next up'}
+                </Badge>
+              </Link>
+            ))}
+          </div>
         </div>
-      </motion.div>
+      </motion.section>
 
-      {/* Recent Applications */}
-      <motion.div variants={itemVariants}>
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Applications</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {stats?.recentApplications && stats.recentApplications.length > 0 ? (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Company</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Match</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {stats.recentApplications.map((app) => (
-                      <TableRow key={app.id}>
-                        <TableCell className="font-medium">{app.company}</TableCell>
-                        <TableCell>{app.role}</TableCell>
-                        <TableCell>
-                          <span className={getMatchScoreColor(app.match_score)}>
-                            {app.match_score}%
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          <Badge className={getStatusColor(app.status)}>
-                            {app.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {formatDate(app.created_at)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground mb-4">
-                  No applications yet. Start by generating your first application!
-                </p>
-                <Link href="/generate">
-                  <Button>
-                    Generate Application
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </Link>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
+      <section className="grid gap-5 lg:grid-cols-3">
+        <SoftStatCard
+          title="Applications this week"
+          value={`${stats?.applicationsThisWeek || 0}`}
+          helper="A steady rhythm matters more than a sprint."
+          progress={Math.min(100, ((stats?.applicationsThisWeek || 0) / 5) * 100)}
+          tint="bg-[#f7e4db]"
+        />
+        <SoftStatCard
+          title="Strength meter average"
+          value={`${stats?.averageMatchScore || 0}%`}
+          helper="A soft nudge toward stronger matching."
+          progress={stats?.averageMatchScore || 0}
+          tint="bg-[#e5efdc]"
+        />
+        <SoftStatCard
+          title="Applications tracked"
+          value={`${stats?.totalApplications || 0}`}
+          helper="Each one is safely logged in your tracker."
+          progress={Math.min(100, ((stats?.totalApplications || 0) / 12) * 100)}
+          tint="bg-[#efe5f7]"
+        />
+      </section>
 
-      {/* Quick Actions */}
-      <motion.div variants={itemVariants}>
-        <Card className="bg-gradient-to-r from-primary to-secondary text-white">
+      <section className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+        <Card className="rounded-[2.2rem] border-[#eadfd3] bg-white/85 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-2xl font-bold mb-2">
-                  Ready to apply to more jobs?
-                </h3>
-                <p className="text-white/90">
-                  Generate tailored applications in seconds with AI
-                </p>
+                <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Recent progress</p>
+                <h2 className="mt-2 font-serif text-3xl text-[#524236]">What moved lately</h2>
               </div>
-              <Link href="/generate">
-                <Button size="lg" variant="secondary">
-                  Generate Now
-                  <ArrowRight className="ml-2 h-5 w-5" />
+              <Link href="/tracker">
+                <Button
+                  variant="ghost"
+                  className="rounded-full border border-[#eadfd3] bg-[#fffaf5] text-[#6d5b4f] hover:bg-[#f7f1ea]"
+                >
+                  View all
                 </Button>
               </Link>
             </div>
+
+            <div className="mt-6 space-y-4">
+              {stats?.recentApplications?.length ? (
+                stats.recentApplications.map((app) => (
+                  <div
+                    key={app.id}
+                    className="flex flex-col gap-4 rounded-[1.7rem] border border-[#efe3d7] bg-[#fffaf5] p-5 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="font-medium text-[#56463b]">{app.company}</p>
+                      <p className="mt-1 text-sm text-[#877568]">{app.role}</p>
+                      <p className="mt-2 text-sm text-[#9c897b]">Saved {formatDate(app.created_at)}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="rounded-full bg-[#e5efdc] px-4 py-2 text-sm text-[#6c8265]">
+                        Strength {app.match_score}%
+                      </span>
+                      <span className="rounded-full bg-[#f3ebe3] px-4 py-2 text-sm text-[#8d7a6d] capitalize">
+                        {app.status}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[1.7rem] border border-dashed border-[#dbcdbf] bg-[#fffaf4] p-8 text-center">
+                  <FileText className="mx-auto h-10 w-10 text-[#b29d8d]" />
+                  <p className="mt-4 font-serif text-2xl text-[#5a4a3f]">Your timeline is still quiet.</p>
+                  <p className="mt-2 text-sm leading-7 text-[#7b6a5d]">
+                    Once you save a generated application, it will show up here as a small win.
+                  </p>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
-      </motion.div>
-    </motion.div>
+
+        <div className="space-y-5">
+          <Card className="rounded-[2.2rem] border-[#eadfd3] bg-[#f7efe7] shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e5efdc] text-[#70846a]">
+                  <HeartHandshake className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif text-3xl text-[#524236]">A little encouragement</h3>
+                  <p className="mt-3 text-sm leading-7 text-[#756659]">
+                    Most job searches feel messy. You already made them more manageable by creating a system.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[2.2rem] border-[#eadfd3] bg-[#eef5e8] shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
+            <CardContent className="p-6">
+              <p className="text-xs uppercase tracking-[0.2em] text-[#809578]">Quick next step</p>
+              <h3 className="mt-3 font-serif text-3xl text-[#4f6149]">
+                {(stats?.resumeCount || 0) > 0 ? 'You are ready to create your next tailored package.' : 'Let’s start by bringing in your master resume.'}
+              </h3>
+              <Link href={(stats?.resumeCount || 0) > 0 ? '/generate' : '/resumes'}>
+                <Button className="mt-6 rounded-full bg-[#86a27e] px-6 text-white hover:bg-[#779570]">
+                  {(stats?.resumeCount || 0) > 0 ? 'Open generator' : 'Open resume vault'}
+                  <Send className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </section>
+    </div>
   )
 }
 
-function StatsCard({
+function SoftStatCard({
   title,
   value,
-  icon: Icon,
-  color,
+  helper,
+  progress,
+  tint,
 }: {
   title: string
-  value: string | number
-  icon: LucideIcon
-  color: string
+  value: string
+  helper: string
+  progress: number
+  tint: string
 }) {
   return (
-    <Card>
-      <CardContent className="p-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm font-medium text-muted-foreground mb-1">
-              {title}
-            </p>
-            <p className="text-3xl font-bold">{value}</p>
-          </div>
-          <div className={`p-3 rounded-lg ${color}`}>
-            <Icon className="h-6 w-6" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-function ChecklistItem({
-  icon: Icon,
-  title,
-  description,
-  done,
-  href,
-}: {
-  icon: LucideIcon
-  title: string
-  description: string
-  done: boolean
-  href: string
-}) {
-  return (
-    <div className="rounded-xl border bg-background p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Icon className="h-5 w-5 text-primary" />
-          <p className="font-medium">{title}</p>
-        </div>
-        {done ? <CheckCircle2 className="h-5 w-5 text-primary" /> : null}
+    <motion.div
+      whileHover={{ y: -4 }}
+      transition={{ type: 'spring', stiffness: 220, damping: 20 }}
+      className={`rounded-[2rem] border border-[#eadfd3] ${tint} p-6 shadow-[0_16px_50px_rgba(214,195,180,0.12)]`}
+    >
+      <p className="text-xs uppercase tracking-[0.2em] text-[#9c897c]">{title}</p>
+      <p className="mt-3 font-serif text-5xl text-[#524236]">{value}</p>
+      <p className="mt-3 text-sm leading-7 text-[#756659]">{helper}</p>
+      <div className="mt-5 h-3 rounded-full bg-white/75">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${Math.max(6, Math.min(100, progress))}%` }}
+          transition={{ type: 'spring', stiffness: 120, damping: 16, delay: 0.2 }}
+          className="h-full rounded-full bg-[#d5b76b]"
+        />
       </div>
-      <p className="mb-4 text-sm text-muted-foreground">{description}</p>
-      <Button asChild size="sm" variant={done ? 'outline' : 'default'}>
-        <Link href={href}>{done ? 'Review' : 'Start'}</Link>
-      </Button>
-    </div>
+    </motion.div>
   )
 }

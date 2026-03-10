@@ -1,114 +1,92 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  Check,
+  Eye,
+  Loader2,
+  Search,
+  Sparkles,
+  Trash2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import {
-  deleteClientApplication,
-  getClientApplications,
-  getClientCurrentUser,
-  updateClientApplicationStatus,
-} from '@/lib/supabase/client-queries'
-import { formatDate, getStatusColor, getMatchScoreColor } from '@/lib/utils'
-import type { Application } from '@/types/database'
-import {
-  Search,
-  Eye,
-  Trash2,
-  Loader2,
-  CheckCircle2,
-  Clock,
-  XCircle,
-  Briefcase,
-  Award,
-  MessageSquare,
-} from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { trackClientEvent } from '@/lib/analytics/client'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useToast } from '@/hooks/use-toast'
+import { deleteClientApplication, getClientApplications, getClientCurrentUser, updateClientApplicationStatus } from '@/lib/supabase/client-queries'
+import { formatDate } from '@/lib/utils'
+import { trackClientEvent } from '@/lib/analytics/client'
+import type { Application } from '@/types/database'
 
-type StatusFilter = 'all' | 'draft' | 'applied' | 'interview' | 'rejected' | 'offer'
+type StatusFilter = 'all' | Application['status']
 
-const statusIcons: Record<Application['status'], any> = {
-  draft: Clock,
-  applied: MessageSquare,
-  interview: Briefcase,
-  rejected: XCircle,
-  offer: Award,
-}
-
-const statusColors: Record<Application['status'], string> = {
-  draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-  applied: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
-  interview: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
-  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  offer: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-}
+const boardColumns: Array<{
+  key: Application['status']
+  label: string
+  tint: string
+}> = [
+  { key: 'draft', label: 'Wishlist', tint: 'bg-[#fff4ec]' },
+  { key: 'applied', label: 'Applied', tint: 'bg-[#eef5e8]' },
+  { key: 'interview', label: 'Interview', tint: 'bg-[#efe5f7]' },
+  { key: 'offer', label: 'Offer', tint: 'bg-[#fff7d9]' },
+  { key: 'rejected', label: 'Closed', tint: 'bg-[#f4ece4]' },
+]
 
 export default function TrackerPage() {
+  const { toast } = useToast()
   const [applications, setApplications] = useState<Application[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [selectedApplication, setSelectedApplication] = useState<Application | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<Application | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
-  const [deleteCandidate, setDeleteCandidate] = useState<Application | null>(null)
-  const { toast } = useToast()
+  const [celebratingId, setCelebratingId] = useState<string | null>(null)
 
   const loadApplications = useCallback(async () => {
     try {
       const user = await getClientCurrentUser()
       if (!user) return
-
       const data = await getClientApplications(user.id)
       setApplications(data)
-    } catch (error) {
-      toast({
-        title: 'Failed to load applications',
-        variant: 'destructive',
-      })
     } finally {
       setIsLoading(false)
     }
-  }, [toast])
+  }, [])
 
   useEffect(() => {
-    loadApplications()
+    void loadApplications()
   }, [loadApplications])
 
-  async function handleStatusChange(applicationId: string, newStatus: Application['status']) {
+  const filteredApplications = useMemo(() => {
+    return applications.filter((app) => {
+      const matchesSearch =
+        app.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        app.role.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesStatus = statusFilter === 'all' || app.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+  }, [applications, searchQuery, statusFilter])
+
+  async function handleStatusChange(applicationId: string, status: Application['status']) {
     setIsUpdating(applicationId)
     try {
-      await updateClientApplicationStatus(applicationId, newStatus)
+      await updateClientApplicationStatus(applicationId, status)
       await loadApplications()
+      setCelebratingId(applicationId)
+      setTimeout(() => setCelebratingId(null), 1400)
       toast({
-        title: 'Status updated',
-        description: `Application status changed to ${newStatus}`,
+        title: 'Moved with care',
+        description: `This application is now in ${boardColumns.find((column) => column.key === status)?.label}.`,
       })
-      void trackClientEvent('application_status_updated', {
-        status: newStatus,
-      })
-    } catch (error) {
-      toast({
-        title: 'Failed to update status',
-        variant: 'destructive',
-      })
+      void trackClientEvent('application_status_updated', { status })
     } finally {
       setIsUpdating(null)
     }
@@ -119,415 +97,263 @@ export default function TrackerPage() {
     try {
       await deleteClientApplication(applicationId)
       await loadApplications()
+      setDeleteCandidate(null)
       toast({
-        title: 'Application deleted',
-        description: 'The application has been removed from your tracker',
-      })
-      void trackClientEvent('application_deleted')
-    } catch (error) {
-      toast({
-        title: 'Failed to delete',
-        variant: 'destructive',
+        title: 'Application removed',
+        description: 'Your board is a little lighter now.',
       })
     } finally {
       setIsDeleting(null)
-      setDeleteCandidate(null)
     }
   }
 
-  const filteredApplications = applications.filter((app) => {
-    const matchesSearch =
-      app.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      app.role.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || app.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
-
   if (isLoading) {
     return (
-      <div className="p-6 md:p-8 space-y-6">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <Skeleton className="h-9 w-52" />
-            <Skeleton className="h-5 w-72" />
-          </div>
-          <div className="flex gap-3">
-            <Skeleton className="h-10 w-full md:w-72" />
-            <Skeleton className="h-10 w-36" />
-          </div>
+      <div className="space-y-6 p-6 md:p-8">
+        <Skeleton className="h-12 w-64 rounded-full" />
+        <Skeleton className="h-16 rounded-[2rem]" />
+        <div className="grid gap-5 lg:grid-cols-4">
+          <Skeleton className="h-[520px] rounded-[2rem]" />
+          <Skeleton className="h-[520px] rounded-[2rem]" />
+          <Skeleton className="h-[520px] rounded-[2rem]" />
+          <Skeleton className="h-[520px] rounded-[2rem]" />
         </div>
-        <Skeleton className="h-24 rounded-xl" />
-        <Skeleton className="h-[420px] rounded-xl" />
       </div>
     )
   }
 
   return (
-    <div className="p-6 md:p-8 space-y-6">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
+    <div className="space-y-6 p-6 md:p-8">
+      <motion.section
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+        transition={{ type: 'spring', stiffness: 140, damping: 18 }}
+        className="grid gap-6 lg:grid-cols-[1.04fr_0.96fr]"
       >
-        <div>
-          <h1 className="text-3xl font-bold">Application Tracker</h1>
-          <p className="text-muted-foreground mt-1">
-            Monitor and manage all your job applications
+        <div className="rounded-[2.2rem] border border-[#eadfd3] bg-[#fff9f3] p-7 shadow-[0_24px_70px_rgba(214,195,180,0.16)]">
+          <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Application tracker</p>
+          <h1 className="mt-4 font-serif text-5xl text-[#524236]">A soft board for every next step.</h1>
+          <p className="mt-4 max-w-2xl text-base leading-8 text-[#746659]">
+            Wishlist, applied roles, interviews, and offers all stay in one kind, easy-to-scan space.
           </p>
         </div>
-        <div className="flex gap-3 w-full md:w-auto">
-          <div className="relative flex-1 md:flex-initial">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search applications..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Status</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
-              <SelectItem value="applied">Applied</SelectItem>
-              <SelectItem value="interview">Interview</SelectItem>
-              <SelectItem value="rejected">Rejected</SelectItem>
-              <SelectItem value="offer">Offer</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </motion.div>
 
-      {/* Stats Bar */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.1 }}
-      >
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex gap-6 overflow-x-auto">
-              {(['draft', 'applied', 'interview', 'rejected', 'offer'] as const).map((status) => {
-                const count = applications.filter(a => a.status === status).length
-                const StatusIcon = statusIcons[status]
-                return (
-                  <div key={status} className="flex items-center gap-2 min-w-[100px]">
-                    <div className={`p-2 rounded-lg ${statusColors[status]}`}>
-                      <StatusIcon className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold">{count}</p>
-                      <p className="text-xs text-muted-foreground capitalize">{status}</p>
-                    </div>
-                  </div>
-                )
-              })}
+        <div className="rounded-[2.2rem] border border-[#eadfd3] bg-white/85 p-6 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-3.5 h-4 w-4 text-[#9d897a]" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search your applications"
+                className="rounded-full border-[#e3d8cd] bg-[#fffcf8] pl-11"
+              />
             </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
+              <SelectTrigger className="w-full rounded-full border-[#e3d8cd] bg-[#fffcf8] sm:w-[180px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All stages</SelectItem>
+                {boardColumns.map((column) => (
+                  <SelectItem key={column.key} value={column.key}>
+                    {column.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="mt-4 text-sm text-[#7b6a5d]">
+            Move a card with the stage picker below. Every change gives a tiny celebratory bounce.
+          </p>
+        </div>
+      </motion.section>
 
-      {/* Applications Table */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.2 }}
-      >
-        <Card>
-          <CardContent className="p-0">
-            {filteredApplications.length === 0 ? (
-              <div className="text-center py-20">
-                <CheckCircle2 className="h-16 w-16 mx-auto text-muted-foreground mb-6" />
-                <h3 className="text-xl font-semibold mb-2">
-                  No applications found
-                </h3>
-                <p className="text-muted-foreground mb-4">
-                  {searchQuery || statusFilter !== 'all'
-                    ? 'Try adjusting your search or filters'
-                    : 'Start by generating your first application'}
-                </p>
-                <a href="/generate">
-                  <Button>
-                    Generate Application
-                  </Button>
-                </a>
+      <section className="grid gap-5 xl:grid-cols-5">
+        {boardColumns.map((column) => {
+          const columnItems = filteredApplications.filter((application) => application.status === column.key)
+
+          return (
+            <div key={column.key} className={`rounded-[2rem] border border-[#eadfd3] ${column.tint} p-4 shadow-[0_18px_60px_rgba(214,195,180,0.12)]`}>
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <p className="font-serif text-2xl text-[#55453a]">{column.label}</p>
+                  <p className="text-sm text-[#8a7769]">{columnItems.length} saved here</p>
+                </div>
               </div>
-            ) : (
-              <>
-                <div className="grid gap-4 p-4 md:hidden">
-                  {filteredApplications.map((app) => (
-                    <Card key={app.id}>
-                      <CardContent className="space-y-4 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="font-semibold">{app.company}</p>
-                            <p className="text-sm text-muted-foreground">{app.role}</p>
-                          </div>
-                          <Badge className={statusColors[app.status]}>
-                            <span className="capitalize">{app.status}</span>
-                          </Badge>
-                        </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">Match score</span>
-                          <span className={getMatchScoreColor(app.match_score)}>{app.match_score}%</span>
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          Saved {formatDate(app.created_at)}
-                        </div>
-                        <div className="grid gap-2">
-                          <Select
-                            value={app.status}
-                            onValueChange={(value) => handleStatusChange(app.id, value as Application['status'])}
-                            disabled={isUpdating === app.id}
+
+              <div className="space-y-4">
+                <AnimatePresence>
+                  {columnItems.length ? (
+                    columnItems.map((application) => (
+                      <motion.div
+                        key={application.id}
+                        layout
+                        initial={{ opacity: 0, y: 14 }}
+                        animate={{
+                          opacity: 1,
+                          y: 0,
+                          scale: celebratingId === application.id ? [1, 1.04, 1] : 1,
+                        }}
+                        exit={{ opacity: 0, y: 12 }}
+                        transition={{ type: 'spring', stiffness: 170, damping: 18 }}
+                        className="relative rounded-[1.7rem] border border-[#eadfd3] bg-white/90 p-4 shadow-[0_12px_35px_rgba(214,195,180,0.12)]"
+                      >
+                        {celebratingId === application.id ? (
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="absolute right-4 top-4 flex items-center gap-1 rounded-full bg-[#e5efdc] px-3 py-1 text-xs text-[#6d8466]"
                           >
-                            <SelectTrigger>
+                            <Check className="h-3 w-3" />
+                            Moved
+                          </motion.div>
+                        ) : null}
+
+                        <p className="font-medium text-[#56463b]">{application.company}</p>
+                        <p className="mt-1 text-sm text-[#7c6b5e]">{application.role}</p>
+                        <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[#a08b7b]">
+                          Saved {formatDate(application.created_at)}
+                        </p>
+                        <p className="mt-3 rounded-full bg-[#f4ece4] px-3 py-1 text-sm text-[#8a7769] inline-block">
+                          Strength {application.match_score}%
+                        </p>
+
+                        <div className="mt-4 space-y-3">
+                          <Select
+                            value={application.status}
+                            onValueChange={(value) => handleStatusChange(application.id, value as Application['status'])}
+                            disabled={isUpdating === application.id}
+                          >
+                            <SelectTrigger className="rounded-full border-[#e3d8cd] bg-[#fffcf8]">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="draft">Draft</SelectItem>
-                              <SelectItem value="applied">Applied</SelectItem>
-                              <SelectItem value="interview">Interview</SelectItem>
-                              <SelectItem value="rejected">Rejected</SelectItem>
-                              <SelectItem value="offer">Offer</SelectItem>
+                              {boardColumns.map((option) => (
+                                <SelectItem key={option.key} value={option.key}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
+
                           <div className="flex gap-2">
                             <Button
-                              variant="outline"
-                              className="flex-1"
+                              variant="ghost"
+                              className="flex-1 rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
                               onClick={() => {
-                                setSelectedApplication(app)
+                                setSelectedApplication(application)
                                 setIsDetailOpen(true)
                               }}
                             >
                               <Eye className="mr-2 h-4 w-4" />
-                              View details
+                              View
                             </Button>
                             <Button
-                              variant="outline"
-                              className="flex-1"
-                              onClick={() => setDeleteCandidate(app)}
-                              disabled={isDeleting === app.id}
+                              variant="ghost"
+                              className="rounded-full border border-[#f0d6cc] bg-[#fff4ef] text-[#b56f5a] hover:bg-[#fdebe4]"
+                              onClick={() => setDeleteCandidate(application)}
                             >
-                              {isDeleting === app.id ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="mr-2 h-4 w-4 text-destructive" />
-                              )}
-                              Delete
+                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-                <div className="hidden overflow-x-auto md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Company</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Match</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <AnimatePresence mode="popLayout">
-                      {filteredApplications.map((app) => (
-                        <TableRow key={app.id}>
-                          <TableCell className="font-medium">{app.company}</TableCell>
-                          <TableCell>{app.role}</TableCell>
-                          <TableCell>
-                            <span className={getMatchScoreColor(app.match_score)}>
-                              {app.match_score}%
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className={statusColors[app.status]}>
-                              <span className="capitalize">{app.status}</span>
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {formatDate(app.created_at)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Select
-                                value={app.status}
-                                onValueChange={(v) => handleStatusChange(app.id, v as Application['status'])}
-                                disabled={isUpdating === app.id}
-                              >
-                                <SelectTrigger className="w-[120px]">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="draft">Draft</SelectItem>
-                                  <SelectItem value="applied">Applied</SelectItem>
-                                  <SelectItem value="interview">Interview</SelectItem>
-                                  <SelectItem value="rejected">Rejected</SelectItem>
-                                  <SelectItem value="offer">Offer</SelectItem>
-                                </SelectContent>
-                              </Select>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => {
-                                  setSelectedApplication(app)
-                                  setIsDetailOpen(true)
-                                }}
-                                aria-label={`View details for ${app.company}`}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => setDeleteCandidate(app)}
-                                disabled={isDeleting === app.id}
-                                aria-label={`Delete ${app.company} application`}
-                              >
-                                {isDeleting === app.id ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-4 w-4 text-destructive" />
-                                )}
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </AnimatePresence>
-                  </TableBody>
-                </Table>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </motion.div>
+                      </motion.div>
+                    ))
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="rounded-[1.7rem] border border-dashed border-[#dbcdbf] bg-white/60 p-6 text-center text-sm leading-7 text-[#8a7769]"
+                    >
+                      Nothing in {column.label.toLowerCase()} yet.
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            </div>
+          )
+        })}
+      </section>
 
-      {/* Application Detail Dialog */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          {selectedApplication && (
+        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
+          {selectedApplication ? (
             <>
               <DialogHeader>
-                <DialogTitle>Application Details</DialogTitle>
-                <DialogDescription>
-                  {selectedApplication.company} - {selectedApplication.role}
+                <DialogTitle className="font-serif text-4xl text-[#56463b]">
+                  {selectedApplication.company}
+                </DialogTitle>
+                <DialogDescription className="text-[#7b6a5d]">
+                  {selectedApplication.role}
                 </DialogDescription>
               </DialogHeader>
-              <Tabs defaultValue="proposal">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="proposal">Cover Letter</TabsTrigger>
-                  <TabsTrigger value="resume">Resume</TabsTrigger>
-                  <TabsTrigger value="match">Match</TabsTrigger>
-                  <TabsTrigger value="interview">Interview</TabsTrigger>
+
+              <Tabs defaultValue="letter">
+                <TabsList className="grid w-full grid-cols-4 rounded-full bg-[#f4ece4] p-1">
+                  <TabsTrigger value="letter" className="rounded-full">Letter</TabsTrigger>
+                  <TabsTrigger value="resume" className="rounded-full">Resume</TabsTrigger>
+                  <TabsTrigger value="strength" className="rounded-full">Strength</TabsTrigger>
+                  <TabsTrigger value="prep" className="rounded-full">Prep</TabsTrigger>
                 </TabsList>
-                <TabsContent value="proposal" className="mt-4">
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed max-h-[400px] overflow-y-auto">
-                        {selectedApplication.proposal}
-                      </div>
-                    </CardContent>
-                  </Card>
+                <TabsContent value="letter" className="mt-5 whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
+                  {selectedApplication.proposal}
                 </TabsContent>
-                <TabsContent value="resume" className="mt-4">
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="whitespace-pre-wrap text-sm leading-relaxed max-h-[400px] overflow-y-auto">
-                        {selectedApplication.tailored_resume}
-                      </div>
-                    </CardContent>
-                  </Card>
+                <TabsContent value="resume" className="mt-5 whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
+                  {selectedApplication.tailored_resume}
                 </TabsContent>
-                <TabsContent value="match" className="mt-4">
-                  <Card>
-                    <CardContent className="p-6 space-y-4">
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium">Match Score</span>
-                          <span className={`text-2xl font-bold ${getMatchScoreColor(selectedApplication.match_score)}`}>
-                            {selectedApplication.match_score}%
-                          </span>
-                        </div>
-                      </div>
-                      {selectedApplication.missing_keywords.length > 0 && (
-                        <div>
-                          <h4 className="text-sm font-medium mb-2">
-                            Missing Keywords ({selectedApplication.missing_keywords.length})
-                          </h4>
-                          <div className="flex flex-wrap gap-2">
-                            {selectedApplication.missing_keywords.map((keyword, i) => (
-                              <Badge key={i} variant="outline">
-                                {keyword}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
+                <TabsContent value="strength" className="mt-5 rounded-[1.8rem] bg-[#fff9f3] p-5">
+                  <p className="font-serif text-4xl text-[#56463b]">Strength {selectedApplication.match_score}%</p>
+                  <p className="mt-3 text-sm leading-7 text-[#7b6a5d]">
+                    This is a supportive measure of alignment, not a judgment.
+                  </p>
                 </TabsContent>
-                <TabsContent value="interview" className="mt-4">
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="space-y-3">
-                        {selectedApplication.interview_questions.map((question, i) => (
-                          <div
-                            key={i}
-                            className="flex gap-3 p-3 rounded-lg bg-muted/50"
-                          >
-                            <Badge className="h-6 w-6 rounded-full flex items-center justify-center shrink-0">
-                              {i + 1}
-                            </Badge>
-                            <p className="text-sm">{question}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                <TabsContent value="prep" className="mt-5 space-y-3 rounded-[1.8rem] bg-[#fff9f3] p-5">
+                  {selectedApplication.interview_questions.map((question, index) => (
+                    <div key={question} className="rounded-[1.4rem] border border-[#eadfd3] bg-white p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#9d897a]">Prompt {index + 1}</p>
+                      <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{question}</p>
+                    </div>
+                  ))}
                 </TabsContent>
               </Tabs>
             </>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 
       <Dialog open={!!deleteCandidate} onOpenChange={(open) => !open && setDeleteCandidate(null)}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
           <DialogHeader>
-            <DialogTitle>Delete application?</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="font-serif text-3xl text-[#55453a]">Remove this application?</DialogTitle>
+            <DialogDescription className="text-[#7b6a5d]">
               {deleteCandidate
-                ? `This will permanently remove the ${deleteCandidate.role} application for ${deleteCandidate.company}.`
+                ? `${deleteCandidate.company} will disappear from your board.`
                 : 'This action cannot be undone.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteCandidate(null)}>
-              Cancel
+            <Button
+              variant="ghost"
+              className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
+              onClick={() => setDeleteCandidate(null)}
+            >
+              Keep it
             </Button>
             <Button
               variant="destructive"
+              className="rounded-full"
               onClick={() => deleteCandidate && handleDelete(deleteCandidate.id)}
               disabled={isDeleting === deleteCandidate?.id}
             >
               {isDeleting === deleteCandidate?.id ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting...
+                  Removing...
                 </>
               ) : (
-                'Delete application'
+                'Remove application'
               )}
             </Button>
           </DialogFooter>
