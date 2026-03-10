@@ -39,6 +39,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { trackClientEvent } from '@/lib/analytics/client'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type StatusFilter = 'all' | 'draft' | 'applied' | 'interview' | 'rejected' | 'offer'
 
@@ -144,8 +145,19 @@ export default function TrackerPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="p-6 md:p-8 space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-52" />
+            <Skeleton className="h-5 w-72" />
+          </div>
+          <div className="flex gap-3">
+            <Skeleton className="h-10 w-full md:w-72" />
+            <Skeleton className="h-10 w-36" />
+          </div>
+        </div>
+        <Skeleton className="h-24 rounded-xl" />
+        <Skeleton className="h-[420px] rounded-xl" />
       </div>
     )
   }

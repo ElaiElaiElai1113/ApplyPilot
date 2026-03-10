@@ -9,7 +9,6 @@ import {
   FileText,
   Send,
   ArrowRight,
-  Loader2,
   CheckCircle2,
   UserCircle2,
 } from 'lucide-react'
@@ -21,6 +20,7 @@ import { getClientCurrentUser, getClientDashboardStats, getClientResumes } from 
 import { formatDate, getStatusColor, getMatchScoreColor } from '@/lib/utils'
 import type { Application } from '@/types/database'
 import type { LucideIcon } from 'lucide-react'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -85,8 +85,17 @@ export default function DashboardPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="p-6 md:p-8 space-y-8">
+        <div className="space-y-2">
+          <Skeleton className="h-9 w-40" />
+          <Skeleton className="h-5 w-72" />
+        </div>
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+          <Skeleton className="h-32 rounded-xl" />
+        </div>
+        <Skeleton className="h-80 rounded-xl" />
       </div>
     )
   }

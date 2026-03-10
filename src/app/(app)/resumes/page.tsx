@@ -33,6 +33,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { trackClientEvent } from '@/lib/analytics/client'
 import { formatResumeText } from '@/lib/resume-format'
+import { Skeleton } from '@/components/ui/skeleton'
 
 export default function ResumesPage() {
   const router = useRouter()
@@ -278,8 +279,16 @@ export default function ResumesPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="p-6 md:p-8 space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-9 w-44" />
+            <Skeleton className="h-5 w-80" />
+          </div>
+          <Skeleton className="h-11 w-36" />
+        </div>
+        <Skeleton className="h-40 rounded-xl" />
+        <Skeleton className="h-40 rounded-xl" />
       </div>
     )
   }

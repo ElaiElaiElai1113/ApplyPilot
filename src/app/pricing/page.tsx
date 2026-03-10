@@ -96,6 +96,15 @@ export default function PricingPage() {
         <div className="mx-auto mt-12 max-w-3xl rounded-2xl border bg-card/70 p-6 text-sm text-muted-foreground">
           Billing is not yet wired in this repo, so this page currently establishes pricing clarity, packaging, and trust while the billing layer is finalized.
         </div>
+
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground sm:flex-row">
+          <Link href="/terms" className="hover:text-foreground hover:underline">
+            Terms of Service
+          </Link>
+          <Link href="/privacy" className="hover:text-foreground hover:underline">
+            Privacy Policy
+          </Link>
+        </div>
       </section>
     </main>
   )

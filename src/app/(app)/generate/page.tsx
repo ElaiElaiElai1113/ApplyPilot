@@ -39,6 +39,7 @@ import { useRouter } from 'next/navigation'
 import type { Resume } from '@/types/database'
 import { getMatchScoreColor } from '@/lib/utils'
 import { trackClientEvent } from '@/lib/analytics/client'
+import { Skeleton } from '@/components/ui/skeleton'
 
 type ResultTab = 'proposal' | 'resume' | 'match' | 'interview'
 
@@ -60,6 +61,7 @@ export default function GeneratePage() {
   const [results, setResults] = useState<GenerateApplicationResponse | null>(null)
   const [activeTab, setActiveTab] = useState<ResultTab>('proposal')
   const [quotaMessage, setQuotaMessage] = useState('')
+  const quotaExceeded = quotaMessage.toLowerCase().includes('monthly generation limit reached')
 
   // Load resumes from Supabase for the current authenticated user
   useEffect(() => {
@@ -340,8 +342,9 @@ export default function GeneratePage() {
       </motion.div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Skeleton className="h-[640px] rounded-xl" />
+          <Skeleton className="h-[640px] rounded-xl" />
         </div>
       ) : (
       <div className="grid lg:grid-cols-2 gap-6">
@@ -361,7 +364,7 @@ export default function GeneratePage() {
                     <p className="font-medium">Monthly generation limit reached</p>
                     <p className="mt-1 text-sm text-muted-foreground">{quotaMessage}</p>
                     <Button asChild className="mt-3" size="sm">
-                      <a href="/pricing">View pricing</a>
+                      <a href="/pricing">Upgrade or view pricing</a>
                     </Button>
                   </div>
                 ) : null}
@@ -450,7 +453,7 @@ export default function GeneratePage() {
               </div>
               <Button
                 onClick={handleGenerate}
-                disabled={isGenerating || isImportingUrl || resumes.length === 0}
+                disabled={isGenerating || isImportingUrl || resumes.length === 0 || quotaExceeded}
                 className="w-full"
                 size="lg"
               >
@@ -462,7 +465,7 @@ export default function GeneratePage() {
                 ) : (
                   <>
                     <Sparkles className="mr-2 h-5 w-5" />
-                    Generate Application
+                    {quotaExceeded ? 'Upgrade to continue generating' : 'Generate Application'}
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </>
                 )}
@@ -488,14 +491,37 @@ export default function GeneratePage() {
               >
                 <Card className="h-full flex items-center justify-center p-12">
                   <div className="text-center">
-                    <Send className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">
-                      Ready to Generate
-                    </h3>
-                    <p className="text-muted-foreground">
-                      Fill in the job details and click generate to create your
-                      application package
-                    </p>
+                    {quotaExceeded ? (
+                      <>
+                        <Target className="h-16 w-16 mx-auto text-primary mb-4" />
+                        <h3 className="text-xl font-semibold mb-2">Upgrade to keep applying</h3>
+                        <p className="text-muted-foreground max-w-md">
+                          You&apos;ve used this month&apos;s generation allowance. Upgrade to unlock more AI-generated application packages.
+                        </p>
+                        <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                          <Button asChild>
+                            <a href="/pricing">See plans</a>
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setQuotaMessage('')}
+                          >
+                            Keep editing job details
+                          </Button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                        <h3 className="text-xl font-semibold mb-2">
+                          Ready to Generate
+                        </h3>
+                        <p className="text-muted-foreground">
+                          Fill in the job details and click generate to create your
+                          application package
+                        </p>
+                      </>
+                    )}
                   </div>
                 </Card>
               </motion.div>

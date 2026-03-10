@@ -16,6 +16,7 @@ const navigation = [
   { name: 'Generate', href: '/generate', icon: Send },
   { name: 'Tracker', href: '/tracker', icon: Table },
   { name: 'Resumes', href: '/resumes', icon: FileText },
+  { name: 'Settings', href: '/settings', icon: Settings },
 ]
 
 export default function AppLayout({
@@ -156,7 +157,7 @@ export default function AppLayout({
               href="/pricing"
               className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
             >
-              <Settings className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" />
               Pricing
             </Link>
             <form action={async () => {

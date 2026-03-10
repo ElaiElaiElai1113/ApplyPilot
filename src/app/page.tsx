@@ -275,7 +275,15 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t py-8 mt-20">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>&copy; {new Date().getFullYear()} ApplyPilot. All rights reserved.</p>
+          <div className="flex flex-col items-center justify-center gap-3 text-sm sm:flex-row">
+            <p>&copy; {new Date().getFullYear()} ApplyPilot. All rights reserved.</p>
+            <Link href="/terms" className="hover:text-foreground hover:underline">
+              Terms of Service
+            </Link>
+            <Link href="/privacy" className="hover:text-foreground hover:underline">
+              Privacy Policy
+            </Link>
+          </div>
         </div>
       </footer>
     </div>
