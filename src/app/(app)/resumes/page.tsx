@@ -232,7 +232,7 @@ export default function ResumesPage() {
           <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Resume shelf</p>
           <h1 className="mt-4 font-serif text-5xl text-[#524236]">Keep every polished version close by.</h1>
           <p className="mt-4 max-w-2xl text-base leading-8 text-[#746659]">
-            Store your master resume, gentle rewrites, and role-specific versions in one soft little vault.
+            Store your master resume, targeted rewrites, and role-specific versions in one place.
           </p>
           <Button
             onClick={handleCreate}

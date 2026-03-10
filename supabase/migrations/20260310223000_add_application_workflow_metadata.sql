@@ -1,0 +1,7 @@
+ALTER TABLE public.applications
+  ADD COLUMN IF NOT EXISTS template_pack TEXT,
+  ADD COLUMN IF NOT EXISTS confidence_insights JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS truth_lock JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS interview_bridge JSONB NOT NULL DEFAULT '[]'::jsonb,
+  ADD COLUMN IF NOT EXISTS next_follow_up_at TIMESTAMP WITH TIME ZONE,
+  ADD COLUMN IF NOT EXISTS last_status_changed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();

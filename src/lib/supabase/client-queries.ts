@@ -1,8 +1,30 @@
 'use client'
 
 import { createBrowserSupabaseClient } from './client'
-import type { Resume, Application } from '@/types/database'
+import type {
+  Resume,
+  Application,
+  ConfidenceInsight,
+  InterviewBridgeItem,
+  TruthLockItem,
+} from '@/types/database'
 import type { User } from '@supabase/supabase-js'
+
+function getDefaultFollowUpAt(status: Application['status']): string | null {
+  const next = new Date()
+
+  if (status === 'applied') {
+    next.setDate(next.getDate() + 5)
+    return next.toISOString()
+  }
+
+  if (status === 'interview') {
+    next.setDate(next.getDate() + 2)
+    return next.toISOString()
+  }
+
+  return null
+}
 
 async function ensureClientProfileExists(userId: string) {
   const supabase = createBrowserSupabaseClient()
@@ -55,7 +77,7 @@ export async function getClientApplications(userId: string): Promise<Application
   const supabase = createBrowserSupabaseClient()
   const { data, error } = await supabase
     .from('applications')
-    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,status,created_at,updated_at')
+    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,template_pack,confidence_insights,truth_lock,interview_bridge,next_follow_up_at,last_status_changed_at,status,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
@@ -85,7 +107,7 @@ export async function getClientDashboardStats(userId: string) {
   // Get recent applications
   const { data: recentApps, error: recentError } = await supabase
     .from('applications')
-    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,status,created_at,updated_at')
+    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,template_pack,confidence_insights,truth_lock,interview_bridge,next_follow_up_at,last_status_changed_at,status,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(5)
@@ -122,7 +144,11 @@ export async function updateClientApplicationStatus(
   const supabase = createBrowserSupabaseClient()
   const { data, error } = await supabase
     .from('applications')
-    .update({ status })
+    .update({
+      status,
+      next_follow_up_at: getDefaultFollowUpAt(status),
+      last_status_changed_at: new Date().toISOString(),
+    })
     .eq('id', applicationId)
     .select()
     .single()
@@ -151,7 +177,11 @@ export async function createClientApplication(
   tailoredResume: string,
   matchScore: number,
   missingKeywords: string[],
-  interviewQuestions: string[]
+  interviewQuestions: string[],
+  templatePack: string | null,
+  confidenceInsights: ConfidenceInsight[],
+  truthLock: TruthLockItem[],
+  interviewBridge: InterviewBridgeItem[]
 ): Promise<Application> {
   const supabase = createBrowserSupabaseClient()
   const { data, error } = await supabase
@@ -167,6 +197,10 @@ export async function createClientApplication(
       match_score: matchScore,
       missing_keywords: missingKeywords,
       interview_questions: interviewQuestions,
+      template_pack: templatePack,
+      confidence_insights: confidenceInsights,
+      truth_lock: truthLock,
+      interview_bridge: interviewBridge,
       status: 'draft',
     })
     .select()
@@ -189,6 +223,10 @@ export async function createClientApplication(
         match_score: matchScore,
         missing_keywords: missingKeywords,
         interview_questions: interviewQuestions,
+        template_pack: templatePack,
+        confidence_insights: confidenceInsights,
+        truth_lock: truthLock,
+        interview_bridge: interviewBridge,
         status: 'draft',
       })
       .select()

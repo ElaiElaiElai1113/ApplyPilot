@@ -74,6 +74,12 @@ export interface Database {
           match_score: number
           missing_keywords: string[]
           interview_questions: string[]
+          template_pack: string | null
+          confidence_insights: Json
+          truth_lock: Json
+          interview_bridge: Json
+          next_follow_up_at: string | null
+          last_status_changed_at: string
           status: 'draft' | 'applied' | 'interview' | 'rejected' | 'offer'
           created_at: string
           updated_at: string
@@ -90,6 +96,12 @@ export interface Database {
           match_score: number
           missing_keywords: string[]
           interview_questions: string[]
+          template_pack?: string | null
+          confidence_insights?: Json
+          truth_lock?: Json
+          interview_bridge?: Json
+          next_follow_up_at?: string | null
+          last_status_changed_at?: string
           status?: 'draft' | 'applied' | 'interview' | 'rejected' | 'offer'
           created_at?: string
           updated_at?: string
@@ -106,6 +118,12 @@ export interface Database {
           match_score?: number
           missing_keywords?: string[]
           interview_questions?: string[]
+          template_pack?: string | null
+          confidence_insights?: Json
+          truth_lock?: Json
+          interview_bridge?: Json
+          next_follow_up_at?: string | null
+          last_status_changed_at?: string
           status?: 'draft' | 'applied' | 'interview' | 'rejected' | 'offer'
           created_at?: string
           updated_at?: string
@@ -184,3 +202,20 @@ export type Application = Database['public']['Tables']['applications']['Row']
 export type Profile = Database['public']['Tables']['profiles']['Row']
 
 export type ApplicationStatus = Application['status']
+
+export interface ConfidenceInsight {
+  requirement: string
+  evidence: string
+  action: string
+}
+
+export interface TruthLockItem {
+  claim: string
+  evidence: string
+}
+
+export interface InterviewBridgeItem {
+  question: string
+  focus_area: string
+  reason: string
+}

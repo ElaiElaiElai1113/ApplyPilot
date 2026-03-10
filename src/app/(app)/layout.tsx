@@ -59,15 +59,15 @@ function SidebarContent({
         </div>
         <div>
           <p className="font-serif text-2xl leading-none text-[#5a493d]">ApplyPilot</p>
-          <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[#9d897a]">Warm workflow</p>
+          <p className="mt-1 text-xs uppercase tracking-[0.22em] text-[#9d897a]">Application OS</p>
         </div>
       </Link>
 
       <div className="mt-6 rounded-[1.8rem] bg-[#fbf4ec] p-4">
-        <p className="text-xs uppercase tracking-[0.2em] text-[#a08b7b]">Today&apos;s pace</p>
-        <p className="mt-3 font-serif text-2xl text-[#5a493d]">You&apos;re doing enough.</p>
+        <p className="text-xs uppercase tracking-[0.2em] text-[#a08b7b]">Execution</p>
+        <p className="mt-3 font-serif text-2xl text-[#5a493d]">Keep the pipeline moving.</p>
         <p className="mt-2 text-sm leading-7 text-[#7a695c]">
-          One resume tweak, one application, one small win at a time.
+          Build targeted packages, track follow-ups, and keep a clear view of next actions.
         </p>
       </div>
 

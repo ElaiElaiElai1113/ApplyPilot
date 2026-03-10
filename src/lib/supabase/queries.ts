@@ -1,7 +1,29 @@
 'use server'
 
 import { createClient } from './server'
-import type { Resume, Application } from '@/types/database'
+import type {
+  Resume,
+  Application,
+  ConfidenceInsight,
+  InterviewBridgeItem,
+  TruthLockItem,
+} from '@/types/database'
+
+function getDefaultFollowUpAt(status: Application['status']): string | null {
+  const next = new Date()
+
+  if (status === 'applied') {
+    next.setDate(next.getDate() + 5)
+    return next.toISOString()
+  }
+
+  if (status === 'interview') {
+    next.setDate(next.getDate() + 2)
+    return next.toISOString()
+  }
+
+  return null
+}
 
 export async function getUserResumes(userId: string): Promise<Resume[]> {
   const supabase = await createClient()
@@ -96,7 +118,11 @@ export async function createApplication(
   tailoredResume: string,
   matchScore: number,
   missingKeywords: string[],
-  interviewQuestions: string[]
+  interviewQuestions: string[],
+  templatePack: string | null,
+  confidenceInsights: ConfidenceInsight[],
+  truthLock: TruthLockItem[],
+  interviewBridge: InterviewBridgeItem[]
 ): Promise<Application> {
   const supabase = await createClient()
   const { data, error } = await supabase
@@ -112,6 +138,10 @@ export async function createApplication(
       match_score: matchScore,
       missing_keywords: missingKeywords,
       interview_questions: interviewQuestions,
+      template_pack: templatePack,
+      confidence_insights: confidenceInsights,
+      truth_lock: truthLock,
+      interview_bridge: interviewBridge,
       status: 'draft',
     })
     .select()
@@ -128,7 +158,11 @@ export async function updateApplicationStatus(
   const supabase = await createClient()
   const { data, error } = await supabase
     .from('applications')
-    .update({ status })
+    .update({
+      status,
+      next_follow_up_at: getDefaultFollowUpAt(status),
+      last_status_changed_at: new Date().toISOString(),
+    })
     .eq('id', applicationId)
     .select()
     .single()

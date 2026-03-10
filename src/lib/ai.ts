@@ -24,6 +24,20 @@ export interface GenerateApplicationResponse {
   match_score: number
   missing_keywords: string[]
   interview_questions: string[]
+  confidence_insights: Array<{
+    requirement: string
+    evidence: string
+    action: string
+  }>
+  truth_lock: Array<{
+    claim: string
+    evidence: string
+  }>
+  interview_bridge: Array<{
+    question: string
+    focus_area: string
+    reason: string
+  }>
   quality_flags?: string[]
   keyword_coverage?: number
   used_fallback?: boolean
@@ -34,6 +48,7 @@ export interface GenerateApplicationInput {
   role: string
   jobDescription: string
   resumeContent: string
+  templatePack?: string
 }
 
 const MAX_COMPANY_CHARS = 120
@@ -64,6 +79,7 @@ const URL_FETCH_TIMEOUT_MS = 12000
 const MAX_HTML_CHARS = 350000
 const MAX_EXTRACTED_TEXT_CHARS = 12000
 const DEFAULT_RESUME_TARGET_MAX_CHARS = 4200
+const DEFAULT_TEMPLATE_PACK = 'general'
 
 class GenerationError extends Error {
   constructor(message: string, public readonly code: string) {
@@ -341,6 +357,76 @@ function toStringArray(value: unknown): string[] {
   return []
 }
 
+function getTemplatePackPrompt(templatePack: string): string {
+  switch (templatePack) {
+    case 'executive-assistant':
+      return 'Prioritize executive support, inbox management, calendar coordination, documentation, and stakeholder communication.'
+    case 'customer-support':
+      return 'Prioritize customer communication, ticket handling, problem resolution, empathy, speed, and clear written updates.'
+    case 'operations':
+      return 'Prioritize SOP execution, tracking systems, coordination, spreadsheets, process discipline, and accuracy.'
+    case 'lead-generation':
+      return 'Prioritize prospect research, list building, CRM hygiene, outreach support, and structured follow-through.'
+    case 'admin':
+      return 'Prioritize scheduling, data entry, documentation, process support, and reliability.'
+    default:
+      return 'Use the strongest evidence from the uploaded resume and align it directly to the role requirements.'
+  }
+}
+
+function buildConfidenceInsights(params: {
+  matched: Array<{ requirement: { keyword: string }; facts: Array<{ text: string }> }>
+  missingKeywords: string[]
+}): GenerateApplicationResponse['confidence_insights'] {
+  const matchedInsights = params.matched.slice(0, 3).map((entry) => ({
+    requirement: entry.requirement.keyword,
+    evidence: entry.facts[0]?.text || 'Relevant experience is present in the uploaded resume.',
+    action: `Keep this point visible in the summary or first experience bullets for ${entry.requirement.keyword}.`,
+  }))
+
+  const missingInsights = params.missingKeywords.slice(0, 2).map((keyword) => ({
+    requirement: keyword,
+    evidence: 'This requirement is not clearly supported by the uploaded resume.',
+    action: `Only add ${keyword} if you can prove it with real experience, tools, or outcomes.`,
+  }))
+
+  return [...matchedInsights, ...missingInsights]
+}
+
+function buildTruthLock(
+  facts: Array<{ text: string }>
+): GenerateApplicationResponse['truth_lock'] {
+  return facts.slice(0, 5).map((fact) => ({
+    claim: fact.text,
+    evidence: fact.text,
+  }))
+}
+
+function buildInterviewBridge(params: {
+  questions: string[]
+  missingKeywords: string[]
+  matched: Array<{ requirement: { keyword: string }; facts: Array<{ text: string }> }>
+}): GenerateApplicationResponse['interview_bridge'] {
+  return params.questions.slice(0, 5).map((question, index) => {
+    const matchedItem = params.matched[index]
+    const missingKeyword = params.missingKeywords[index]
+
+    if (missingKeyword) {
+      return {
+        question,
+        focus_area: missingKeyword,
+        reason: `This question is likely because ${missingKeyword} appears in the role but is not strongly evidenced in the resume.`,
+      }
+    }
+
+    return {
+      question,
+      focus_area: matchedItem?.requirement.keyword || 'relevant experience',
+      reason: matchedItem?.facts[0]?.text || 'This question ties back to the strongest matching experience in the resume.',
+    }
+  })
+}
+
 function extractQuestionsFromText(content: string): string[] {
   const matches = content.match(/[^\n\r?]{8,120}\?/g) || []
   return matches.map((q) => q.trim()).filter(Boolean)
@@ -351,7 +437,8 @@ function buildStructuredFallback(
   resumeContent: string,
   company: string,
   role: string,
-  jobDescription: string
+  jobDescription: string,
+  templatePack: string
 ): GenerateApplicationResponse {
   const jdLower = jobDescription.toLowerCase()
   const resumeLower = resumeContent.toLowerCase()
@@ -403,15 +490,42 @@ function buildStructuredFallback(
 
 ROLE-ALIGNED HIGHLIGHTS
 - Highlights preserved and reordered to better match the ${role} position at ${company}.
+- Template pack applied: ${templatePack}.
 - Emphasizes transferable experience, relevant tools, and measurable strengths already present in the source resume.
 - Keeps wording grounded in existing resume evidence rather than inventing new claims.`
+
+  const interviewQuestions = questionCandidates.slice(0, 10)
+  const confidenceInsights = missingKeywords.slice(0, 3).map((keyword) => ({
+    requirement: keyword,
+    evidence: 'This requirement is referenced in the job description but not strongly reflected in the source resume.',
+    action: `Only strengthen ${keyword} if you can support it with real experience.`,
+  }))
+  const truthLock = resumeContent
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((line) => ({
+      claim: line,
+      evidence: line,
+    }))
+  const interviewBridge = interviewQuestions.slice(0, 5).map((question, index) => ({
+    question,
+    focus_area: missingKeywords[index] || 'relevant experience',
+    reason: missingKeywords[index]
+      ? `This question helps you close the gap around ${missingKeywords[index]}.`
+      : 'This question is grounded in the most relevant experience from your resume.',
+  }))
 
   return {
     proposal_message: proposal,
     tailored_resume: tailoredResume,
     match_score: Math.min(100, Math.max(0, fallbackScore)),
     missing_keywords: missingKeywords,
-    interview_questions: questionCandidates.slice(0, 10),
+    interview_questions: interviewQuestions,
+    confidence_insights: confidenceInsights,
+    truth_lock: truthLock,
+    interview_bridge: interviewBridge,
   }
 }
 
@@ -877,6 +991,7 @@ async function generateApplicationV2(params: {
   role: string
   jobDescription: string
   resumeContent: string
+  templatePack: string
   glmApiUrl: string
   glmApiKey: string
   modelCandidates: string[]
@@ -891,6 +1006,7 @@ async function generateApplicationV2(params: {
     role,
     jobDescription,
     resumeContent,
+    templatePack,
     glmApiUrl,
     glmApiKey,
     modelCandidates,
@@ -909,11 +1025,14 @@ async function generateApplicationV2(params: {
   const requirements = extractJobRequirements(jobDescription)
   const mapping = mapEvidenceToRequirements(factGraph, requirements)
   const tailorPlan = buildTailorPlan(factGraph, mapping)
+  const templatePackPrompt = getTemplatePackPrompt(templatePack)
 
   // Proposal branch (decoupled from resume branch)
   const proposalPrompt = `Write a concise job application message for this role.
 - Company: ${company}
 - Role: ${role}
+- Template pack: ${templatePack}
+- Pack guidance: ${templatePackPrompt}
 - Tone: professional, reliable, detail-oriented
 - Constraints: 3 short paragraphs, no markdown, no analysis
 - Must include the word "Precision" in the first line when relevant to the job requirements.
@@ -948,7 +1067,10 @@ ${tailorPlan.selected_facts.slice(0, 14).map((f) => `- ${f.text}`).join('\n')}`
   // Resume tailoring branch
   let tailoredResume = ''
   try {
-    const rewritePrompt = buildResumeRewritePrompt(company, role, jobDescription, tailorPlan)
+    const rewritePrompt = `${buildResumeRewritePrompt(company, role, jobDescription, tailorPlan)}
+
+Template Pack Guidance:
+${templatePackPrompt}`
     const rewriteResult = await callModelForContent({
       glmApiUrl,
       glmApiKey,
@@ -1004,18 +1126,33 @@ ${tailorPlan.selected_facts.slice(0, 14).map((f) => `- ${f.text}`).join('\n')}`
     flags: qualityFlags,
   })
 
+  const interviewQuestions = [
+    'Tell me about a time you caught an important detail before sending work.',
+    'How do you ensure pricing and margin calculations are accurate?',
+    'How do you handle SOP-driven repetitive tasks without quality drop?',
+    'What is your process for prioritizing and rewriting emails professionally?',
+    'How do you structure daily status updates?',
+  ]
+  const confidenceInsights = buildConfidenceInsights({
+    matched: mapping.matched,
+    missingKeywords: mapping.missingKeywords,
+  })
+  const truthLock = buildTruthLock(tailorPlan.selected_facts)
+  const interviewBridge = buildInterviewBridge({
+    questions: interviewQuestions,
+    missingKeywords: mapping.missingKeywords,
+    matched: mapping.matched,
+  })
+
   return {
     proposal_message: proposalMessage,
     tailored_resume: tailoredResume,
     match_score: mapping.matchScore,
     missing_keywords: mapping.missingKeywords.slice(0, 20),
-    interview_questions: [
-      'Tell me about a time you caught an important detail before sending work.',
-      'How do you ensure pricing and margin calculations are accurate?',
-      'How do you handle SOP-driven repetitive tasks without quality drop?',
-      'What is your process for prioritizing and rewriting emails professionally?',
-      'How do you structure daily status updates?',
-    ],
+    interview_questions: interviewQuestions,
+    confidence_insights: confidenceInsights,
+    truth_lock: truthLock,
+    interview_bridge: interviewBridge,
     quality_flags: Array.from(new Set(qualityFlags)),
     keyword_coverage: mapping.keywordCoverage,
     used_fallback: usedFallback,
@@ -1039,6 +1176,7 @@ export async function generateApplication(
   const role = input.role.trim().slice(0, MAX_ROLE_CHARS)
   const jobDescription = input.jobDescription.trim().slice(0, MAX_JOB_DESCRIPTION_CHARS)
   const resumeContent = input.resumeContent.trim().slice(0, MAX_RESUME_CHARS)
+  const templatePack = (input.templatePack || DEFAULT_TEMPLATE_PACK).trim() || DEFAULT_TEMPLATE_PACK
 
   if (!company || !role || !jobDescription || !resumeContent) {
     throw new GenerationError('Please complete all required fields.', 'missing_fields')
@@ -1113,6 +1251,7 @@ export async function generateApplication(
       role,
       jobDescription,
       resumeContent,
+      templatePack,
       glmApiUrl,
       glmApiKey,
       modelCandidates,
@@ -1145,22 +1284,26 @@ Job Details:
 - Role: ${role}
 - Job Description: ${jobDescription}
 
-Please provide a JSON response with the following structure:
-{
-  "proposal_message": "A compelling cover letter/proposal message (3-4 paragraphs)",
-  "tailored_resume": "An optimized version of the resume tailored for this specific role, highlighting relevant experience and skills",
-  "match_score": "A number between 0-100 indicating how well the resume matches the job requirements",
-  "missing_keywords": "Array of important keywords from the job description that are missing or underemphasized in the resume",
-  "interview_questions": "Array of 5-8 likely interview questions based on the job requirements and resume"
-}
+	Please provide a JSON response with the following structure:
+	{
+	  "proposal_message": "A compelling cover letter/proposal message (3-4 paragraphs)",
+	  "tailored_resume": "An optimized version of the resume tailored for this specific role, highlighting relevant experience and skills",
+	  "match_score": "A number between 0-100 indicating how well the resume matches the job requirements",
+	  "missing_keywords": "Array of important keywords from the job description that are missing or underemphasized in the resume",
+	  "interview_questions": "Array of 5-8 likely interview questions based on the job requirements and resume",
+	  "confidence_insights": [{"requirement":"", "evidence":"", "action":""}],
+	  "truth_lock": [{"claim":"", "evidence":""}],
+	  "interview_bridge": [{"question":"", "focus_area":"", "reason":""}]
+	}
 
 Important guidelines:
 - The proposal should be professional, enthusiastic, and demonstrate understanding of the company and role
 - The tailored resume should maintain the original structure but optimize bullet points and descriptions
-- The match score should be realistic and based on actual skill alignment
-- Missing keywords should be specific and actionable
-- Interview questions should be relevant and challenging
-- Return ONLY valid JSON, no additional text`
+	- The match score should be realistic and based on actual skill alignment
+	- Missing keywords should be specific and actionable
+	- Interview questions should be relevant and challenging
+	- Template pack to bias toward: ${templatePack}
+	- Return ONLY valid JSON, no additional text`
 
   try {
     const controller = new AbortController()
@@ -1330,8 +1473,8 @@ Important guidelines:
         model: selectedModel,
       })
     }
-    const parsedResult = !shouldUseFallback && jsonResponse
-      ? {
+	    const parsedResult = !shouldUseFallback && jsonResponse
+	      ? {
           proposal_message: parsedProposal,
           tailored_resume:
             typeof jsonResponse.tailored_resume === 'string'
@@ -1342,10 +1485,19 @@ Important guidelines:
             typeof jsonResponse.match_score === 'string'
               ? Number(jsonResponse.match_score)
               : 0,
-          missing_keywords: toStringArray(jsonResponse.missing_keywords),
-          interview_questions: toStringArray(jsonResponse.interview_questions),
-        }
-      : buildStructuredFallback(content, resumeContent, company, role, jobDescription)
+	          missing_keywords: toStringArray(jsonResponse.missing_keywords),
+	          interview_questions: toStringArray(jsonResponse.interview_questions),
+	          confidence_insights: Array.isArray(jsonResponse.confidence_insights)
+	            ? jsonResponse.confidence_insights
+	            : [],
+	          truth_lock: Array.isArray(jsonResponse.truth_lock)
+	            ? jsonResponse.truth_lock
+	            : [],
+	          interview_bridge: Array.isArray(jsonResponse.interview_bridge)
+	            ? jsonResponse.interview_bridge
+	            : [],
+	        }
+      : buildStructuredFallback(content, resumeContent, company, role, jobDescription, templatePack)
 
     await supabase.from('ai_generation_usage').insert({
       user_id: user.id,
@@ -1367,6 +1519,9 @@ Important guidelines:
       match_score: Math.min(100, Math.max(0, Number(parsedResult.match_score) || 0)),
       missing_keywords: parsedResult.missing_keywords.slice(0, 20),
       interview_questions: parsedResult.interview_questions.slice(0, 10),
+      confidence_insights: parsedResult.confidence_insights || [],
+      truth_lock: parsedResult.truth_lock || [],
+      interview_bridge: parsedResult.interview_bridge || [],
     }
   } catch (error) {
     await supabase.from('ai_generation_usage').insert({

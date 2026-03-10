@@ -34,6 +34,12 @@ CREATE TABLE IF NOT EXISTS public.applications (
   match_score INTEGER NOT NULL DEFAULT 0,
   missing_keywords TEXT[] DEFAULT '{}',
   interview_questions TEXT[] DEFAULT '{}',
+  template_pack TEXT,
+  confidence_insights JSONB NOT NULL DEFAULT '[]'::jsonb,
+  truth_lock JSONB NOT NULL DEFAULT '[]'::jsonb,
+  interview_bridge JSONB NOT NULL DEFAULT '[]'::jsonb,
+  next_follow_up_at TIMESTAMP WITH TIME ZONE,
+  last_status_changed_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'applied', 'interview', 'rejected', 'offer')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

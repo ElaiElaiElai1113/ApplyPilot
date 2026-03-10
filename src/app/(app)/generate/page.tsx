@@ -1,24 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  ArrowRight,
-  Check,
-  Copy,
-  FileText,
-  Loader2,
-  MessageCircleHeart,
-  RefreshCw,
-  Sparkles,
-  Target,
-} from 'lucide-react'
+import { ArrowRight, Check, Copy, Loader2, MessageCircleHeart, RefreshCw, Sparkles, Target } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
@@ -29,18 +19,28 @@ import { trackClientEvent } from '@/lib/analytics/client'
 import type { Resume } from '@/types/database'
 
 type Step = 1 | 2 | 3
+type TemplatePack = 'general' | 'executive-assistant' | 'customer-support' | 'operations' | 'lead-generation' | 'admin'
 
 const steps = [
-  { id: 1 as Step, title: 'Tell us about the role', body: 'A company name, title, and optional link is enough to begin.' },
-  { id: 2 as Step, title: 'Bring in the details', body: 'Choose a resume and paste the job description when you’re ready.' },
-  { id: 3 as Step, title: 'Let the AI write gently', body: 'We’ll review what you entered, then build your tailored package.' },
+  { id: 1 as Step, title: 'Define the role', body: 'Add the company, title, and optional job link.' },
+  { id: 2 as Step, title: 'Add the source material', body: 'Choose a resume and paste the job description.' },
+  { id: 3 as Step, title: 'Review and generate', body: 'Confirm the inputs, then build the package.' },
+]
+
+const templatePacks: Array<{ value: TemplatePack; label: string; description: string }> = [
+  { value: 'general', label: 'General', description: 'Balanced output for any role.' },
+  { value: 'executive-assistant', label: 'Executive Assistant', description: 'Bias toward scheduling, inbox management, and executive support.' },
+  { value: 'customer-support', label: 'Customer Support', description: 'Bias toward customer communication, ticket handling, and resolution.' },
+  { value: 'operations', label: 'Operations', description: 'Bias toward SOPs, process control, spreadsheets, and accuracy.' },
+  { value: 'lead-generation', label: 'Lead Generation', description: 'Bias toward prospecting, outreach support, and CRM discipline.' },
+  { value: 'admin', label: 'Admin', description: 'Bias toward coordination, documentation, and reliability.' },
 ]
 
 function getStrengthCopy(score: number) {
-  if (score >= 90) return 'This looks strong and ready for a final review.'
-  if (score >= 75) return 'You’re in a good place. A few tweaks could make this even stronger.'
-  if (score >= 60) return 'There is a solid foundation here. Let’s tighten a few details together.'
-  return 'This is a starting point. We can improve the fit with some gentle adjustments.'
+  if (score >= 90) return 'This is strong and ready for a final review.'
+  if (score >= 75) return 'This is competitive. A few targeted edits could improve fit.'
+  if (score >= 60) return 'The baseline is solid. Tighten alignment before sending.'
+  return 'The fit is still weak. Review the gap areas before applying.'
 }
 
 export default function GeneratePage() {
@@ -60,6 +60,7 @@ export default function GeneratePage() {
     company: '',
     role: '',
     jobDescription: '',
+    templatePack: 'general' as TemplatePack,
   })
 
   useEffect(() => {
@@ -85,10 +86,7 @@ export default function GeneratePage() {
   }, [router])
 
   const quotaExceeded = quotaMessage.toLowerCase().includes('monthly generation limit reached')
-  const selectedResume = useMemo(
-    () => resumes.find((resume) => resume.id === selectedResumeId) || null,
-    [resumes, selectedResumeId]
-  )
+  const selectedResume = useMemo(() => resumes.find((resume) => resume.id === selectedResumeId) || null, [resumes, selectedResumeId])
 
   function nextStep() {
     setStep((current) => Math.min(3, current + 1) as Step)
@@ -100,10 +98,7 @@ export default function GeneratePage() {
 
   async function handleImportFromUrl() {
     if (!formData.jobUrl.trim()) {
-      toast({
-        title: 'Add a job link first.',
-        variant: 'destructive',
-      })
+      toast({ title: 'Add a job link first.', variant: 'destructive' })
       return
     }
 
@@ -116,14 +111,11 @@ export default function GeneratePage() {
         role: prev.role.trim() || extracted.role || prev.role,
         jobDescription: extracted.jobDescription,
       }))
-      toast({
-        title: 'Job details imported',
-        description: 'Take a quick look and adjust anything that feels off.',
-      })
+      toast({ title: 'Job details imported', description: 'Review the imported fields before generating.' })
     } catch (error) {
       toast({
         title: 'Import failed',
-        description: error instanceof Error ? error.message : 'Please paste the job description instead.',
+        description: error instanceof Error ? error.message : 'Paste the job description manually instead.',
         variant: 'destructive',
       })
     } finally {
@@ -134,8 +126,8 @@ export default function GeneratePage() {
   async function handleGenerate() {
     if (!formData.company.trim() || !formData.role.trim() || !formData.jobDescription.trim() || !selectedResume) {
       toast({
-        title: 'We still need a few details.',
-        description: 'Please add the role, company, job description, and choose a resume.',
+        title: 'Complete the required fields first.',
+        description: 'Add the company, role, job description, and source resume.',
         variant: 'destructive',
       })
       return
@@ -149,25 +141,24 @@ export default function GeneratePage() {
         role: formData.role,
         jobDescription: formData.jobDescription,
         resumeContent: selectedResume.content,
+        templatePack: formData.templatePack,
       })
+
       setResults(response)
       toast({
-        title: 'Your package is ready',
-        description: 'Take your time reviewing it.',
+        title: 'Package generated',
+        description: 'Review the score, document outputs, and reasoning panels.',
       })
       void trackClientEvent('generation_succeeded', {
         match_score: response.match_score,
+        template_pack: formData.templatePack,
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Please try again later.'
       if (message.toLowerCase().includes('monthly generation limit reached')) {
         setQuotaMessage(message)
       }
-      toast({
-        title: 'Generation paused',
-        description: message,
-        variant: 'destructive',
-      })
+      toast({ title: 'Generation failed', description: message, variant: 'destructive' })
     } finally {
       setIsGenerating(false)
     }
@@ -194,13 +185,14 @@ export default function GeneratePage() {
         results.tailored_resume,
         results.match_score,
         results.missing_keywords,
-        results.interview_questions
+        results.interview_questions,
+        formData.templatePack,
+        results.confidence_insights,
+        results.truth_lock,
+        results.interview_bridge
       )
 
-      toast({
-        title: 'Saved to your tracker',
-        description: 'Your application is ready whenever you want to revisit it.',
-      })
+      toast({ title: 'Saved to tracker', description: 'The package is now available in your workflow board.' })
       router.push('/tracker')
     } finally {
       setIsSaving(false)
@@ -210,14 +202,9 @@ export default function GeneratePage() {
   async function copyText(text: string, label: string) {
     try {
       await navigator.clipboard.writeText(text)
-      toast({
-        title: `${label} copied`,
-      })
+      toast({ title: `${label} copied` })
     } catch {
-      toast({
-        title: 'Copy failed',
-        variant: 'destructive',
-      })
+      toast({ title: 'Copy failed', variant: 'destructive' })
     }
   }
 
@@ -232,22 +219,13 @@ export default function GeneratePage() {
 
   return (
     <div className="grid gap-6 p-6 md:p-8 lg:grid-cols-[0.95fr_1.05fr]">
-      <motion.section
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 140, damping: 18 }}
-        className="space-y-6"
-      >
+      <motion.section initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 140, damping: 18 }} className="space-y-6">
         <Card className="rounded-[2.2rem] border-[#eadfd3] bg-[#fff9f3] shadow-[0_24px_70px_rgba(214,195,180,0.16)]">
           <CardHeader className="p-7">
-            <div className="rounded-full bg-[#eef5e8] px-4 py-2 text-sm text-[#6e8567] w-fit">
-              Gentle generation wizard
-            </div>
-            <CardTitle className="mt-4 font-serif text-5xl text-[#524236]">
-              Let&apos;s build this together.
-            </CardTitle>
+            <div className="w-fit rounded-full bg-[#eef5e8] px-4 py-2 text-sm text-[#6e8567]">Application generator</div>
+            <CardTitle className="mt-4 font-serif text-5xl text-[#524236]">Build a targeted application package.</CardTitle>
             <CardDescription className="max-w-xl text-base leading-8 text-[#746659]">
-              We’ll move in small, clear steps so this part feels manageable and human.
+              Import the role, choose a resume, and generate a rewrite with evidence-backed reasoning.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 px-7 pb-7">
@@ -256,22 +234,9 @@ export default function GeneratePage() {
               const complete = step > item.id
 
               return (
-                <div
-                  key={item.id}
-                  className={`rounded-[1.7rem] border p-4 transition-colors ${
-                    active
-                      ? 'border-[#d8cabc] bg-white'
-                      : complete
-                        ? 'border-[#dbe7d3] bg-[#eef5e8]'
-                        : 'border-[#efe3d7] bg-[#fffaf5]'
-                  }`}
-                >
+                <div key={item.id} className={`rounded-[1.7rem] border p-4 transition-colors ${active ? 'border-[#d8cabc] bg-white' : complete ? 'border-[#dbe7d3] bg-[#eef5e8]' : 'border-[#efe3d7] bg-[#fffaf5]'}`}>
                   <div className="flex items-start gap-4">
-                    <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-full text-sm ${
-                        complete ? 'bg-[#86a27e] text-white' : active ? 'bg-[#f3ebe3] text-[#8d7a6d]' : 'bg-[#f5f0ea] text-[#b39f90]'
-                      }`}
-                    >
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm ${complete ? 'bg-[#86a27e] text-white' : active ? 'bg-[#f3ebe3] text-[#8d7a6d]' : 'bg-[#f5f0ea] text-[#b39f90]'}`}>
                       {complete ? <Check className="h-4 w-4" /> : item.id}
                     </div>
                     <div>
@@ -289,64 +254,48 @@ export default function GeneratePage() {
           <CardContent className="space-y-5 p-7">
             {step === 1 ? (
               <>
-                <StepTitle
-                  title="Start with the basics"
-                  body="A company name and role title already gives the AI a gentle sense of direction."
-                />
+                <StepTitle title="Start with the role" body="Add the company, role title, and optional role pack." />
                 <Field label="Job posting link (optional)">
                   <div className="flex gap-3">
-                    <Input
-                      value={formData.jobUrl}
-                      onChange={(event) => setFormData((prev) => ({ ...prev, jobUrl: event.target.value }))}
-                      placeholder="Paste a LinkedIn or job board link"
-                      className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]"
-                    />
-                    <Button
-                      variant="ghost"
-                      className="rounded-full border border-[#e2d6cb] bg-[#fffaf5] text-[#6d5b4f] hover:bg-[#f7f1ea]"
-                      onClick={handleImportFromUrl}
-                      disabled={isImportingUrl}
-                    >
-                      {isImportingUrl ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Importing
-                        </>
-                      ) : (
-                        'Import'
-                      )}
+                    <Input value={formData.jobUrl} onChange={(event) => setFormData((prev) => ({ ...prev, jobUrl: event.target.value }))} placeholder="Paste a LinkedIn or job board link" className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]" />
+                    <Button variant="ghost" className="rounded-full border border-[#e2d6cb] bg-[#fffaf5] text-[#6d5b4f] hover:bg-[#f7f1ea]" onClick={handleImportFromUrl} disabled={isImportingUrl}>
+                      {isImportingUrl ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Importing</> : 'Import'}
                     </Button>
                   </div>
                 </Field>
                 <Field label="Company">
-                  <Input
-                    value={formData.company}
-                    onChange={(event) => setFormData((prev) => ({ ...prev, company: event.target.value }))}
-                    placeholder="e.g. Acme VA Agency"
-                    className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]"
-                  />
+                  <Input value={formData.company} onChange={(event) => setFormData((prev) => ({ ...prev, company: event.target.value }))} placeholder="e.g. Acme VA Agency" className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]" />
                 </Field>
                 <Field label="Role title">
-                  <Input
-                    value={formData.role}
-                    onChange={(event) => setFormData((prev) => ({ ...prev, role: event.target.value }))}
-                    placeholder="e.g. Executive Assistant or Virtual Assistant"
-                    className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]"
-                  />
+                  <Input value={formData.role} onChange={(event) => setFormData((prev) => ({ ...prev, role: event.target.value }))} placeholder="e.g. Executive Assistant" className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]" />
+                </Field>
+                <Field label="Role pack">
+                  <Select value={formData.templatePack} onValueChange={(value) => setFormData((prev) => ({ ...prev, templatePack: value as TemplatePack }))}>
+                    <SelectTrigger className="rounded-[1.4rem] border-[#e3d8cd] bg-[#fffcf8]">
+                      <SelectValue placeholder="Choose a pack" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templatePacks.map((pack) => (
+                        <SelectItem key={pack.value} value={pack.value}>
+                          {pack.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs leading-6 text-[#8b786a]">
+                    {templatePacks.find((pack) => pack.value === formData.templatePack)?.description}
+                  </p>
                 </Field>
               </>
             ) : null}
 
             {step === 2 ? (
               <>
-                <StepTitle
-                  title="Bring in the role details"
-                  body="Choose which resume version you want to use, then paste the job description so we can tailor things kindly."
-                />
+                <StepTitle title="Add the source material" body="Choose the source resume, then paste the job description you want to target." />
                 <Field label="Choose a resume">
                   {resumes.length === 0 ? (
                     <div className="rounded-[1.5rem] border border-dashed border-[#d8cabc] bg-[#fffaf4] p-5 text-sm text-[#7b6a5d]">
-                      Your resume shelf is still empty. Add one in the Resume Vault first.
+                      Your resume vault is empty. Add one before generating.
                     </div>
                   ) : (
                     <Select value={selectedResumeId} onValueChange={setSelectedResumeId}>
@@ -364,76 +313,46 @@ export default function GeneratePage() {
                   )}
                 </Field>
                 <Field label="Job description">
-                  <Textarea
-                    value={formData.jobDescription}
-                    onChange={(event) => setFormData((prev) => ({ ...prev, jobDescription: event.target.value }))}
-                    placeholder="Paste the role details right here..."
-                    className="min-h-[240px] rounded-[1.8rem] border-[#e3d8cd] bg-[#fffcf8] p-5 text-sm leading-7"
-                  />
+                  <Textarea value={formData.jobDescription} onChange={(event) => setFormData((prev) => ({ ...prev, jobDescription: event.target.value }))} placeholder="Paste the role details here" className="min-h-[240px] rounded-[1.8rem] border-[#e3d8cd] bg-[#fffcf8] p-5 text-sm leading-7" />
                 </Field>
               </>
             ) : null}
 
             {step === 3 ? (
               <>
-                <StepTitle
-                  title="A final friendly review"
-                  body="We’ll use the details below to create a tailored cover letter, resume, and supportive strength meter."
-                />
+                <StepTitle title="Review before generation" body="Confirm the inputs below before creating the tailored package." />
                 <div className="space-y-4 rounded-[1.8rem] border border-[#efe3d7] bg-[#fffaf5] p-5">
                   <SummaryRow label="Company" value={formData.company || 'Not added yet'} />
                   <SummaryRow label="Role" value={formData.role || 'Not added yet'} />
+                  <SummaryRow label="Role pack" value={templatePacks.find((pack) => pack.value === formData.templatePack)?.label || 'General'} />
                   <SummaryRow label="Resume" value={selectedResume?.title || 'No resume selected'} />
-                  <SummaryRow
-                    label="Job description"
-                    value={formData.jobDescription ? `${formData.jobDescription.length} characters added` : 'Not added yet'}
-                  />
+                  <SummaryRow label="Job description" value={formData.jobDescription ? `${formData.jobDescription.length} characters added` : 'Not added yet'} />
                 </div>
                 {quotaExceeded ? (
                   <div className="rounded-[1.7rem] border border-[#f1d8cd] bg-[#fff1eb] p-5">
-                    <p className="font-medium text-[#8c5e4d]">You’ve reached this month’s generation allowance.</p>
+                    <p className="font-medium text-[#8c5e4d]">Monthly generation limit reached.</p>
                     <p className="mt-2 text-sm leading-7 text-[#8c6d5f]">{quotaMessage}</p>
-                    <LinkButton href="/pricing" label="View upgrade options" />
+                    <Link href="/pricing" className="mt-4 inline-flex rounded-full bg-[#d98f74] px-5 py-3 text-sm text-white transition-colors hover:bg-[#cf8064]">
+                      View plans
+                    </Link>
                   </div>
                 ) : null}
               </>
             ) : null}
 
             <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-between">
-              <Button
-                variant="ghost"
-                className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
-                onClick={previousStep}
-                disabled={step === 1}
-              >
+              <Button variant="ghost" className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]" onClick={previousStep} disabled={step === 1}>
                 Back
               </Button>
 
               {step < 3 ? (
-                <Button
-                  className="rounded-full bg-[#86a27e] px-6 text-white hover:bg-[#779570]"
-                  onClick={nextStep}
-                >
+                <Button className="rounded-full bg-[#86a27e] px-6 text-white hover:bg-[#779570]" onClick={nextStep}>
                   Next step
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               ) : (
-                <Button
-                  className="rounded-full bg-[#d98f74] px-6 text-white hover:bg-[#cf8064]"
-                  onClick={handleGenerate}
-                  disabled={isGenerating || quotaExceeded || resumes.length === 0}
-                >
-                  {isGenerating ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Writing your package...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="mr-2 h-4 w-4" />
-                      Generate softly
-                    </>
-                  )}
+                <Button className="rounded-full bg-[#d98f74] px-6 text-white hover:bg-[#cf8064]" onClick={handleGenerate} disabled={isGenerating || quotaExceeded || resumes.length === 0}>
+                  {isGenerating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Generating...</> : <><Sparkles className="mr-2 h-4 w-4" />Generate package</>}
                 </Button>
               )}
             </div>
@@ -441,42 +360,22 @@ export default function GeneratePage() {
         </Card>
       </motion.section>
 
-      <motion.section
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 140, damping: 18, delay: 0.08 }}
-      >
+      <motion.section initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ type: 'spring', stiffness: 140, damping: 18, delay: 0.08 }}>
         <Card className="min-h-[720px] rounded-[2.2rem] border-[#eadfd3] bg-white/85 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
           <CardContent className="h-full p-7">
             <AnimatePresence mode="wait">
               {isGenerating ? (
-                <motion.div
-                  key="generating"
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.98 }}
-                  className="flex h-full min-h-[620px] flex-col items-center justify-center text-center"
-                >
+                <motion.div key="generating" initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }} className="flex h-full min-h-[620px] flex-col items-center justify-center text-center">
                   <div className="relative h-24 w-24">
-                    <motion.div
-                      className="absolute inset-0 rounded-full bg-[#e5efdc]"
-                      animate={{ scale: [1, 1.16, 1], opacity: [0.8, 0.45, 0.8] }}
-                      transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                    />
-                    <motion.div
-                      className="absolute inset-4 rounded-full bg-[#f7e4db]"
-                      animate={{ scale: [1, 1.08, 1], opacity: [0.9, 0.55, 0.9] }}
-                      transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
-                    />
+                    <motion.div className="absolute inset-0 rounded-full bg-[#e5efdc]" animate={{ scale: [1, 1.16, 1], opacity: [0.8, 0.45, 0.8] }} transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }} />
+                    <motion.div className="absolute inset-4 rounded-full bg-[#f7e4db]" animate={{ scale: [1, 1.08, 1], opacity: [0.9, 0.55, 0.9] }} transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }} />
                     <div className="absolute inset-0 flex items-center justify-center">
                       <MessageCircleHeart className="h-9 w-9 text-[#8a7463]" />
                     </div>
                   </div>
-                  <h2 className="mt-8 font-serif text-4xl text-[#56463b]">
-                    Our AI is thoughtfully writing a tailored letter for you...
-                  </h2>
+                  <h2 className="mt-8 font-serif text-4xl text-[#56463b]">Generating your tailored package...</h2>
                   <p className="mt-4 max-w-md text-sm leading-7 text-[#79695c]">
-                    We&apos;re reading the job description, finding your strongest experience, and shaping a warm, professional draft.
+                    The system is matching job requirements to resume evidence, rewriting the resume, and preparing interview prep.
                   </p>
                   <div className="mt-6 flex items-center gap-2">
                     <span className="h-2.5 w-2.5 animate-bounce rounded-full bg-[#86a27e]" />
@@ -485,104 +384,55 @@ export default function GeneratePage() {
                   </div>
                 </motion.div>
               ) : results ? (
-                <motion.div
-                  key="results"
-                  initial={{ opacity: 0, y: 12 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 12 }}
-                  className="space-y-6"
-                >
+                <motion.div key="results" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 12 }} className="space-y-6">
                   <div className="rounded-[1.8rem] border border-[#eadfd3] bg-[#fff9f3] p-5">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                       <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Strength meter</p>
+                        <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Match score</p>
                         <div className="mt-3 flex items-center gap-4">
                           <div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#eef5e8]">
                             <span className="font-serif text-3xl text-[#4f6149]">{results.match_score}</span>
                           </div>
                           <div>
                             <p className="font-medium text-[#5c4c40]">{getStrengthCopy(results.match_score)}</p>
-                            <p className="mt-1 text-sm text-[#7b6a5d]">This meter is a gentle guide, not a grade.</p>
+                            <p className="mt-1 text-sm text-[#7b6a5d]">Use this score to decide whether to send, revise, or skip.</p>
                           </div>
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-3">
-                        <Button
-                          variant="ghost"
-                          className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
-                          onClick={() => {
-                            toast({
-                              title: 'Creating a fresh version',
-                              description: 'Your current draft will stay visible until the new one is ready.',
-                            })
-                            void handleGenerate()
-                          }}
-                        >
+                        <Button variant="ghost" className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]" onClick={() => void handleGenerate()}>
                           <RefreshCw className="mr-2 h-4 w-4" />
                           Re-generate
                         </Button>
-                        <Button
-                          className="rounded-full bg-[#86a27e] px-6 text-white hover:bg-[#779570]"
-                          onClick={handleSaveToTracker}
-                          disabled={isSaving}
-                        >
-                          {isSaving ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Saving...
-                            </>
-                          ) : (
-                            <>
-                              <Check className="mr-2 h-4 w-4" />
-                              Save to tracker
-                            </>
-                          )}
+                        <Button className="rounded-full bg-[#86a27e] px-6 text-white hover:bg-[#779570]" onClick={handleSaveToTracker} disabled={isSaving}>
+                          {isSaving ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving...</> : <><Check className="mr-2 h-4 w-4" />Save to tracker</>}
                         </Button>
                       </div>
                     </div>
                     <div className="mt-5 h-3 overflow-hidden rounded-full bg-[#efe7df]">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.max(8, results.match_score)}%` }}
-                        transition={{ type: 'spring', stiffness: 120, damping: 18 }}
-                        className="h-full rounded-full bg-[linear-gradient(90deg,#86a27e,#d9b86c)]"
-                      />
+                      <motion.div initial={{ width: 0 }} animate={{ width: `${Math.max(8, results.match_score)}%` }} transition={{ type: 'spring', stiffness: 120, damping: 18 }} className="h-full rounded-full bg-[linear-gradient(90deg,#86a27e,#d9b86c)]" />
                     </div>
                   </div>
 
-                  <ResultSection
-                    title="Your tailored cover letter"
-                    actionLabel="Copy letter"
-                    onAction={() => void copyText(results.proposal_message, 'Cover letter')}
-                  >
+                  <ResultSection title="Tailored cover letter" actionLabel="Copy letter" onAction={() => void copyText(results.proposal_message, 'Cover letter')}>
                     {results.proposal_message}
                   </ResultSection>
 
-                  <ResultSection
-                    title="Your refreshed resume"
-                    actionLabel="Copy resume"
-                    onAction={() => void copyText(results.tailored_resume, 'Tailored resume')}
-                  >
+                  <ResultSection title="Targeted resume rewrite" actionLabel="Copy resume" onAction={() => void copyText(results.tailored_resume, 'Tailored resume')}>
                     {results.tailored_resume}
                   </ResultSection>
 
                   <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
                     <Card className="rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
                       <CardHeader>
-                        <CardTitle className="font-serif text-3xl text-[#56463b]">Helpful nudges</CardTitle>
-                        <CardDescription className="text-[#7b6a5d]">
-                          These are the areas the job description mentions that could use a little more emphasis.
-                        </CardDescription>
+                        <CardTitle className="font-serif text-3xl text-[#56463b]">Gap areas</CardTitle>
+                        <CardDescription className="text-[#7b6a5d]">These are the requirements that still need stronger support.</CardDescription>
                       </CardHeader>
                       <CardContent className="flex flex-wrap gap-3">
-                        {results.missing_keywords.length > 0 ? (
-                          results.missing_keywords.map((keyword) => (
-                            <span key={keyword} className="rounded-full bg-[#efe5f7] px-4 py-2 text-sm text-[#79638a]">
-                              {keyword}
-                            </span>
-                          ))
-                        ) : (
-                          <p className="text-sm leading-7 text-[#7b6a5d]">Nothing major stands out. Your resume already covers this role nicely.</p>
+                        {results.missing_keywords.length > 0 ? results.missing_keywords.map((keyword) => (
+                          <span key={keyword} className="rounded-full bg-[#efe5f7] px-4 py-2 text-sm text-[#79638a]">{keyword}</span>
+                        )) : (
+                          <p className="text-sm leading-7 text-[#7b6a5d]">No major keyword gaps detected for this role.</p>
                         )}
                       </CardContent>
                     </Card>
@@ -590,35 +440,52 @@ export default function GeneratePage() {
                     <Card className="rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
                       <CardHeader>
                         <CardTitle className="font-serif text-3xl text-[#56463b]">Interview prep</CardTitle>
-                        <CardDescription className="text-[#7b6a5d]">
-                          Save these for your next practice session or interview prep block.
-                        </CardDescription>
+                        <CardDescription className="text-[#7b6a5d]">Save these questions for interview prep or screening calls.</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-3">
                         {results.interview_questions.map((question, index) => (
                           <div key={question} className="rounded-[1.4rem] border border-[#efe3d7] bg-[#fff9f3] p-4">
-                            <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Prompt {index + 1}</p>
+                            <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Question {index + 1}</p>
                             <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{question}</p>
                           </div>
                         ))}
                       </CardContent>
                     </Card>
                   </div>
+
+                  <div className="grid gap-6 lg:grid-cols-2">
+                    <InsightSection title="Confidence mode" description="See which requirements are already supported and what still needs proof." items={results.confidence_insights} getKey={(item) => `${item.requirement}-${item.evidence}`} renderItem={(item) => (
+                      <>
+                        <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">{item.requirement}</p>
+                        <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{item.evidence}</p>
+                        <p className="mt-2 text-sm font-medium text-[#8a6a58]">{item.action}</p>
+                      </>
+                    )} />
+
+                    <InsightSection title="Truth lock" description="Claims below are grounded in the uploaded resume evidence." items={results.truth_lock} getKey={(item) => `${item.claim}-${item.evidence}`} renderItem={(item) => (
+                      <>
+                        <p className="text-sm leading-7 text-[#6d5d51]">{item.claim}</p>
+                        <p className="mt-2 text-xs uppercase tracking-[0.2em] text-[#9d897a]">Source: {item.evidence}</p>
+                      </>
+                    )} />
+                  </div>
+
+                  <InsightSection title="Interview bridge" description="Connect likely interview questions to strengths or gaps in this application." items={results.interview_bridge} getKey={(item) => `${item.question}-${item.focus_area}`} renderItem={(item) => (
+                    <>
+                      <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">{item.focus_area}</p>
+                      <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{item.question}</p>
+                      <p className="mt-2 text-sm text-[#8a6a58]">{item.reason}</p>
+                    </>
+                  )} />
                 </motion.div>
               ) : (
-                <motion.div
-                  key="empty"
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 8 }}
-                  className="flex h-full min-h-[620px] flex-col items-center justify-center rounded-[2rem] border border-dashed border-[#dbcdbf] bg-[#fffaf4] px-10 text-center"
-                >
+                <motion.div key="empty" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }} className="flex h-full min-h-[620px] flex-col items-center justify-center rounded-[2rem] border border-dashed border-[#dbcdbf] bg-[#fffaf4] px-10 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[#e5efdc] text-[#6d8466]">
                     <Target className="h-7 w-7" />
                   </div>
-                  <h2 className="mt-6 font-serif text-4xl text-[#58483d]">Your personalized package will appear here.</h2>
+                  <h2 className="mt-6 font-serif text-4xl text-[#58483d]">Your package will appear here.</h2>
                   <p className="mt-4 max-w-md text-sm leading-7 text-[#7a695c]">
-                    Once we generate your draft, you’ll see a gentle strength meter, tailored writing, and easy next steps.
+                    After generation, you will see the score, rewritten documents, confidence mode, truth lock, and interview bridge.
                   </p>
                 </motion.div>
               )}
@@ -639,13 +506,7 @@ function StepTitle({ title, body }: { title: string; body: string }) {
   )
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string
-  children: React.ReactNode
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="space-y-2">
       <Label>{label}</Label>
@@ -663,49 +524,40 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function ResultSection({
-  title,
-  actionLabel,
-  onAction,
-  children,
-}: {
-  title: string
-  actionLabel: string
-  onAction: () => void
-  children: string
-}) {
+function ResultSection({ title, actionLabel, onAction, children }: { title: string; actionLabel: string; onAction: () => void; children: string }) {
   return (
     <Card className="rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
           <CardTitle className="font-serif text-3xl text-[#56463b]">{title}</CardTitle>
-          <CardDescription className="text-[#7b6a5d]">
-            Review gently, then copy any part you want to refine.
-          </CardDescription>
+          <CardDescription className="text-[#7b6a5d]">Review it, edit if needed, and copy what you want to use.</CardDescription>
         </div>
-        <Button
-          variant="ghost"
-          className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
-          onClick={onAction}
-        >
+        <Button variant="ghost" className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]" onClick={onAction}>
           <Copy className="mr-2 h-4 w-4" />
           {actionLabel}
         </Button>
       </CardHeader>
-      <CardContent className="rounded-b-[2rem] bg-[#fffaf5] p-6 text-sm leading-8 text-[#66564a] whitespace-pre-wrap">
-        {children}
-      </CardContent>
+      <CardContent className="whitespace-pre-wrap rounded-b-[2rem] bg-[#fffaf5] p-6 text-sm leading-8 text-[#66564a]">{children}</CardContent>
     </Card>
   )
 }
 
-function LinkButton({ href, label }: { href: string; label: string }) {
+function InsightSection<T>({ title, description, items, renderItem, getKey }: { title: string; description: string; items: T[]; renderItem: (item: T) => React.ReactNode; getKey: (item: T) => string }) {
   return (
-    <a
-      href={href}
-      className="mt-4 inline-flex rounded-full bg-[#d98f74] px-5 py-3 text-sm text-white transition-colors hover:bg-[#cf8064]"
-    >
-      {label}
-    </a>
+    <Card className="rounded-[2rem] border-[#eadfd3] bg-[#fffdf9]">
+      <CardHeader>
+        <CardTitle className="font-serif text-3xl text-[#56463b]">{title}</CardTitle>
+        <CardDescription className="text-[#7b6a5d]">{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {items.length > 0 ? items.map((item) => (
+          <div key={getKey(item)} className="rounded-[1.4rem] border border-[#efe3d7] bg-[#fff9f3] p-4">
+            {renderItem(item)}
+          </div>
+        )) : (
+          <p className="text-sm leading-7 text-[#7b6a5d]">No items generated for this section.</p>
+        )}
+      </CardContent>
+    </Card>
   )
 }

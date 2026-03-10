@@ -2,14 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  Check,
-  Eye,
-  Loader2,
-  Search,
-  Sparkles,
-  Trash2,
-} from 'lucide-react'
+import { Check, Clock3, Eye, Loader2, Search, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -18,24 +11,37 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { deleteClientApplication, getClientApplications, getClientCurrentUser, updateClientApplicationStatus } from '@/lib/supabase/client-queries'
+import {
+  deleteClientApplication,
+  getClientApplications,
+  getClientCurrentUser,
+  updateClientApplicationStatus,
+} from '@/lib/supabase/client-queries'
 import { formatDate } from '@/lib/utils'
 import { trackClientEvent } from '@/lib/analytics/client'
-import type { Application } from '@/types/database'
+import type { Application, ConfidenceInsight, InterviewBridgeItem, TruthLockItem } from '@/types/database'
 
 type StatusFilter = 'all' | Application['status']
 
-const boardColumns: Array<{
-  key: Application['status']
-  label: string
-  tint: string
-}> = [
-  { key: 'draft', label: 'Wishlist', tint: 'bg-[#fff4ec]' },
+const boardColumns: Array<{ key: Application['status']; label: string; tint: string }> = [
+  { key: 'draft', label: 'Pipeline', tint: 'bg-[#fff4ec]' },
   { key: 'applied', label: 'Applied', tint: 'bg-[#eef5e8]' },
   { key: 'interview', label: 'Interview', tint: 'bg-[#efe5f7]' },
   { key: 'offer', label: 'Offer', tint: 'bg-[#fff7d9]' },
   { key: 'rejected', label: 'Closed', tint: 'bg-[#f4ece4]' },
 ]
+
+function asConfidenceInsights(value: Application['confidence_insights']): ConfidenceInsight[] {
+  return Array.isArray(value) ? (value as unknown as ConfidenceInsight[]) : []
+}
+
+function asTruthLock(value: Application['truth_lock']): TruthLockItem[] {
+  return Array.isArray(value) ? (value as unknown as TruthLockItem[]) : []
+}
+
+function asInterviewBridge(value: Application['interview_bridge']): InterviewBridgeItem[] {
+  return Array.isArray(value) ? (value as unknown as InterviewBridgeItem[]) : []
+}
 
 export default function TrackerPage() {
   const { toast } = useToast()
@@ -75,6 +81,13 @@ export default function TrackerPage() {
     })
   }, [applications, searchQuery, statusFilter])
 
+  const dueFollowUps = useMemo(() => {
+    const now = Date.now()
+    return applications
+      .filter((app) => app.next_follow_up_at && new Date(app.next_follow_up_at).getTime() <= now)
+      .sort((a, b) => new Date(a.next_follow_up_at || 0).getTime() - new Date(b.next_follow_up_at || 0).getTime())
+  }, [applications])
+
   async function handleStatusChange(applicationId: string, status: Application['status']) {
     setIsUpdating(applicationId)
     try {
@@ -83,7 +96,7 @@ export default function TrackerPage() {
       setCelebratingId(applicationId)
       setTimeout(() => setCelebratingId(null), 1400)
       toast({
-        title: 'Moved with care',
+        title: 'Status updated',
         description: `This application is now in ${boardColumns.find((column) => column.key === status)?.label}.`,
       })
       void trackClientEvent('application_status_updated', { status })
@@ -100,7 +113,7 @@ export default function TrackerPage() {
       setDeleteCandidate(null)
       toast({
         title: 'Application removed',
-        description: 'Your board is a little lighter now.',
+        description: 'The tracker has been updated.',
       })
     } finally {
       setIsDeleting(null)
@@ -132,9 +145,9 @@ export default function TrackerPage() {
       >
         <div className="rounded-[2.2rem] border border-[#eadfd3] bg-[#fff9f3] p-7 shadow-[0_24px_70px_rgba(214,195,180,0.16)]">
           <p className="text-xs uppercase tracking-[0.2em] text-[#9d897a]">Application tracker</p>
-          <h1 className="mt-4 font-serif text-5xl text-[#524236]">A soft board for every next step.</h1>
+          <h1 className="mt-4 font-serif text-5xl text-[#524236]">Track every application from draft to outcome.</h1>
           <p className="mt-4 max-w-2xl text-base leading-8 text-[#746659]">
-            Wishlist, applied roles, interviews, and offers all stay in one kind, easy-to-scan space.
+            Keep status, match score, reasoning, and follow-up timing in one place.
           </p>
         </div>
 
@@ -145,7 +158,7 @@ export default function TrackerPage() {
               <Input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search your applications"
+                placeholder="Search applications"
                 className="rounded-full border-[#e3d8cd] bg-[#fffcf8] pl-11"
               />
             </div>
@@ -163,9 +176,22 @@ export default function TrackerPage() {
               </SelectContent>
             </Select>
           </div>
-          <p className="mt-4 text-sm text-[#7b6a5d]">
-            Move a card with the stage picker below. Every change gives a tiny celebratory bounce.
-          </p>
+          <div className="mt-4 rounded-[1.6rem] border border-[#efe3d7] bg-[#fffaf5] p-4">
+            <div className="flex items-center gap-2 text-sm text-[#7b6a5d]">
+              <Clock3 className="h-4 w-4 text-[#a56448]" />
+              {dueFollowUps.length} follow-up item(s) due
+            </div>
+            {dueFollowUps.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {dueFollowUps.slice(0, 2).map((app) => (
+                  <div key={app.id} className="flex items-center justify-between text-sm text-[#6d5d51]">
+                    <span>{app.company}</span>
+                    <span>{app.next_follow_up_at ? formatDate(app.next_follow_up_at) : 'Now'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </motion.section>
 
@@ -178,7 +204,7 @@ export default function TrackerPage() {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="font-serif text-2xl text-[#55453a]">{column.label}</p>
-                  <p className="text-sm text-[#8a7769]">{columnItems.length} saved here</p>
+                  <p className="text-sm text-[#8a7769]">{columnItems.length} item(s)</p>
                 </div>
               </div>
 
@@ -207,7 +233,7 @@ export default function TrackerPage() {
                             className="absolute right-4 top-4 flex items-center gap-1 rounded-full bg-[#e5efdc] px-3 py-1 text-xs text-[#6d8466]"
                           >
                             <Check className="h-3 w-3" />
-                            Moved
+                            Updated
                           </motion.div>
                         ) : null}
 
@@ -216,14 +242,26 @@ export default function TrackerPage() {
                         <p className="mt-3 text-xs uppercase tracking-[0.18em] text-[#a08b7b]">
                           Saved {formatDate(application.created_at)}
                         </p>
-                        <p className="mt-3 rounded-full bg-[#f4ece4] px-3 py-1 text-sm text-[#8a7769] inline-block">
-                          Strength {application.match_score}%
-                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <p className="rounded-full bg-[#f4ece4] px-3 py-1 text-sm text-[#8a7769] inline-block">
+                            Match {application.match_score}%
+                          </p>
+                          {application.template_pack ? (
+                            <p className="rounded-full bg-[#eef5e8] px-3 py-1 text-sm text-[#6c8265] capitalize">
+                              {application.template_pack.replaceAll('-', ' ')}
+                            </p>
+                          ) : null}
+                        </div>
+                        {application.next_follow_up_at ? (
+                          <p className="mt-3 text-sm text-[#8a6a58]">
+                            Follow-up: {formatDate(application.next_follow_up_at)}
+                          </p>
+                        ) : null}
 
                         <div className="mt-4 space-y-3">
                           <Select
                             value={application.status}
-                            onValueChange={(value) => handleStatusChange(application.id, value as Application['status'])}
+                            onValueChange={(value) => void handleStatusChange(application.id, value as Application['status'])}
                             disabled={isUpdating === application.id}
                           >
                             <SelectTrigger className="rounded-full border-[#e3d8cd] bg-[#fffcf8]">
@@ -282,19 +320,18 @@ export default function TrackerPage() {
           {selectedApplication ? (
             <>
               <DialogHeader>
-                <DialogTitle className="font-serif text-4xl text-[#56463b]">
-                  {selectedApplication.company}
-                </DialogTitle>
+                <DialogTitle className="font-serif text-4xl text-[#56463b]">{selectedApplication.company}</DialogTitle>
                 <DialogDescription className="text-[#7b6a5d]">
                   {selectedApplication.role}
                 </DialogDescription>
               </DialogHeader>
 
               <Tabs defaultValue="letter">
-                <TabsList className="grid w-full grid-cols-4 rounded-full bg-[#f4ece4] p-1">
+                <TabsList className="grid w-full grid-cols-5 rounded-full bg-[#f4ece4] p-1">
                   <TabsTrigger value="letter" className="rounded-full">Letter</TabsTrigger>
                   <TabsTrigger value="resume" className="rounded-full">Resume</TabsTrigger>
-                  <TabsTrigger value="strength" className="rounded-full">Strength</TabsTrigger>
+                  <TabsTrigger value="confidence" className="rounded-full">Confidence</TabsTrigger>
+                  <TabsTrigger value="truth" className="rounded-full">Truth Lock</TabsTrigger>
                   <TabsTrigger value="prep" className="rounded-full">Prep</TabsTrigger>
                 </TabsList>
                 <TabsContent value="letter" className="mt-5 whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
@@ -303,17 +340,29 @@ export default function TrackerPage() {
                 <TabsContent value="resume" className="mt-5 whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
                   {selectedApplication.tailored_resume}
                 </TabsContent>
-                <TabsContent value="strength" className="mt-5 rounded-[1.8rem] bg-[#fff9f3] p-5">
-                  <p className="font-serif text-4xl text-[#56463b]">Strength {selectedApplication.match_score}%</p>
-                  <p className="mt-3 text-sm leading-7 text-[#7b6a5d]">
-                    This is a supportive measure of alignment, not a judgment.
-                  </p>
+                <TabsContent value="confidence" className="mt-5 space-y-3 rounded-[1.8rem] bg-[#fff9f3] p-5">
+                  {asConfidenceInsights(selectedApplication.confidence_insights).map((item) => (
+                    <div key={`${item.requirement}-${item.evidence}`} className="rounded-[1.4rem] border border-[#eadfd3] bg-white p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#9d897a]">{item.requirement}</p>
+                      <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{item.evidence}</p>
+                      <p className="mt-2 text-sm text-[#8a6a58]">{item.action}</p>
+                    </div>
+                  ))}
+                </TabsContent>
+                <TabsContent value="truth" className="mt-5 space-y-3 rounded-[1.8rem] bg-[#fff9f3] p-5">
+                  {asTruthLock(selectedApplication.truth_lock).map((item) => (
+                    <div key={`${item.claim}-${item.evidence}`} className="rounded-[1.4rem] border border-[#eadfd3] bg-white p-4">
+                      <p className="text-sm leading-7 text-[#6d5d51]">{item.claim}</p>
+                      <p className="mt-2 text-xs uppercase tracking-[0.18em] text-[#9d897a]">Source: {item.evidence}</p>
+                    </div>
+                  ))}
                 </TabsContent>
                 <TabsContent value="prep" className="mt-5 space-y-3 rounded-[1.8rem] bg-[#fff9f3] p-5">
-                  {selectedApplication.interview_questions.map((question, index) => (
-                    <div key={question} className="rounded-[1.4rem] border border-[#eadfd3] bg-white p-4">
-                      <p className="text-xs uppercase tracking-[0.18em] text-[#9d897a]">Prompt {index + 1}</p>
-                      <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{question}</p>
+                  {asInterviewBridge(selectedApplication.interview_bridge).map((item, index) => (
+                    <div key={`${item.question}-${index}`} className="rounded-[1.4rem] border border-[#eadfd3] bg-white p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-[#9d897a]">{item.focus_area}</p>
+                      <p className="mt-2 text-sm leading-7 text-[#6d5d51]">{item.question}</p>
+                      <p className="mt-2 text-sm text-[#8a6a58]">{item.reason}</p>
                     </div>
                   ))}
                 </TabsContent>
@@ -328,25 +377,14 @@ export default function TrackerPage() {
           <DialogHeader>
             <DialogTitle className="font-serif text-3xl text-[#55453a]">Remove this application?</DialogTitle>
             <DialogDescription className="text-[#7b6a5d]">
-              {deleteCandidate
-                ? `${deleteCandidate.company} will disappear from your board.`
-                : 'This action cannot be undone.'}
+              {deleteCandidate ? `${deleteCandidate.company} will be removed from the tracker.` : 'This action cannot be undone.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              variant="ghost"
-              className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
-              onClick={() => setDeleteCandidate(null)}
-            >
+            <Button variant="ghost" className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]" onClick={() => setDeleteCandidate(null)}>
               Keep it
             </Button>
-            <Button
-              variant="destructive"
-              className="rounded-full"
-              onClick={() => deleteCandidate && handleDelete(deleteCandidate.id)}
-              disabled={isDeleting === deleteCandidate?.id}
-            >
+            <Button variant="destructive" className="rounded-full" onClick={() => deleteCandidate && void handleDelete(deleteCandidate.id)} disabled={isDeleting === deleteCandidate?.id}>
               {isDeleting === deleteCandidate?.id ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
