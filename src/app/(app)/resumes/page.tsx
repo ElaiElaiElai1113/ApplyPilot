@@ -9,16 +9,14 @@ import {
   Trash2,
   Loader2,
   Calendar,
-  Send,
   Copy,
   Check,
-  X,
   Upload,
   Wand2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -46,6 +44,7 @@ export default function ResumesPage() {
   const [selectedResume, setSelectedResume] = useState<Resume | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [deleteCandidate, setDeleteCandidate] = useState<Resume | null>(null)
   const [formData, setFormData] = useState({ title: '', content: '' })
   const { toast } = useToast()
   const [currentUserId, setCurrentUserId] = useState<string>('')
@@ -171,6 +170,7 @@ export default function ResumesPage() {
       })
     } finally {
       setIsDeleting(null)
+      setDeleteCandidate(null)
     }
   }
 
@@ -358,7 +358,7 @@ export default function ResumesPage() {
                       variant="outline"
                       size="icon"
                       onClick={() => handleCopy(resume.content)}
-                      title="Copy resume"
+                      aria-label={`Copy ${resume.title}`}
                     >
                       <Copy className="h-4 w-4" />
                     </Button>
@@ -366,16 +366,16 @@ export default function ResumesPage() {
                       variant="outline"
                       size="icon"
                       onClick={() => handleEdit(resume)}
-                      title="Edit resume"
+                      aria-label={`Edit ${resume.title}`}
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => handleDelete(resume.id)}
+                      onClick={() => setDeleteCandidate(resume)}
                       disabled={isDeleting === resume.id}
-                      title="Delete resume"
+                      aria-label={`Delete ${resume.title}`}
                     >
                       {isDeleting === resume.id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -503,6 +503,38 @@ export default function ResumesPage() {
                   <Check className="mr-2 h-4 w-4" />
                   {isEditing ? 'Update Resume' : 'Add Resume'}
                 </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteCandidate} onOpenChange={(open) => !open && setDeleteCandidate(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete resume?</DialogTitle>
+            <DialogDescription>
+              {deleteCandidate
+                ? `This will permanently remove ${deleteCandidate.title} from your vault.`
+                : 'This action cannot be undone.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteCandidate(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteCandidate && handleDelete(deleteCandidate.id)}
+              disabled={isDeleting === deleteCandidate?.id}
+            >
+              {isDeleting === deleteCandidate?.id ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete resume'
               )}
             </Button>
           </DialogFooter>

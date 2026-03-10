@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { motion } from 'framer-motion'
+import { motion, useReducedMotion } from 'framer-motion'
 import {
   FileText,
   Sparkles,
@@ -10,8 +10,10 @@ import {
   CheckCircle2,
   BarChart3,
   Target,
+  ShieldCheck,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 
 const features = [
   {
@@ -70,14 +72,16 @@ const steps = [
 ]
 
 export default function HomePage() {
+  const reduceMotion = useReducedMotion()
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-secondary/10">
       {/* Navigation */}
       <nav className="border-b bg-background/80 backdrop-blur-lg sticky top-0 z-50">
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={reduceMotion ? false : { opacity: 0, x: -20 }}
+            animate={reduceMotion ? {} : { opacity: 1, x: 0 }}
             className="flex items-center gap-2"
           >
             <Sparkles className="h-6 w-6 text-primary" />
@@ -86,14 +90,14 @@ export default function HomePage() {
             </span>
           </motion.div>
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={reduceMotion ? false : { opacity: 0, x: 20 }}
+            animate={reduceMotion ? {} : { opacity: 1, x: 0 }}
             className="flex items-center gap-4"
           >
             <Link href="/login">
               <Button variant="ghost">Sign In</Button>
             </Link>
-            <Link href="/signup">
+            <Link href="/pricing">
               <Button>Get Started Free</Button>
             </Link>
           </motion.div>
@@ -103,19 +107,19 @@ export default function HomePage() {
       {/* Hero Section */}
       <section className="container mx-auto px-4 py-20 text-center">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
+          initial={reduceMotion ? false : { opacity: 0, y: 20 }}
+          animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           className="max-w-4xl mx-auto"
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
+            initial={reduceMotion ? false : { scale: 0.9, opacity: 0 }}
+            animate={reduceMotion ? {} : { scale: 1, opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.5 }}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 text-primary mb-6"
           >
             <Zap className="h-4 w-4" />
-            <span className="text-sm font-medium">Powered by GLM 4.7 AI</span>
+            <span className="text-sm font-medium">Powered by advanced AI workflow automation</span>
           </motion.div>
           <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
             Apply to Jobs{' '}
@@ -129,12 +133,12 @@ export default function HomePage() {
             Land your dream job with intelligent, personalized application packages.
           </p>
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 20 }}
+            animate={reduceMotion ? {} : { opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
             className="flex flex-col sm:flex-row gap-4 justify-center"
           >
-            <Link href="/signup">
+            <Link href="/pricing">
               <Button size="lg" className="text-lg px-8">
                 Start Free Trial
                 <ArrowRight className="ml-2 h-5 w-5" />
@@ -147,6 +151,35 @@ export default function HomePage() {
             </Link>
           </motion.div>
         </motion.div>
+        <div className="mx-auto mt-10 grid max-w-4xl gap-4 text-left md:grid-cols-3">
+          <Card className="bg-card/70">
+            <CardContent className="flex items-start gap-3 p-5">
+              <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
+              <div>
+                <p className="font-medium">Structured workflow</p>
+                <p className="text-sm text-muted-foreground">Resume vault, generation flow, and tracker in one product.</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-card/70">
+            <CardContent className="flex items-start gap-3 p-5">
+              <BarChart3 className="mt-0.5 h-5 w-5 text-primary" />
+              <div>
+                <p className="font-medium">Match visibility</p>
+                <p className="text-sm text-muted-foreground">See score gaps and missing keywords before you apply.</p>
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="bg-card/70">
+            <CardContent className="flex items-start gap-3 p-5">
+              <FileText className="mt-0.5 h-5 w-5 text-primary" />
+              <div>
+                <p className="font-medium">Human-editable output</p>
+                <p className="text-sm text-muted-foreground">Copy, refine, and save every generated package for your next step.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </section>
 
       {/* Features Section */}
@@ -172,9 +205,11 @@ export default function HomePage() {
               transition={{ delay: index * 0.1 }}
             >
               <Card>
-                <feature.icon className="h-12 w-12 text-primary mb-4" />
-                <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-                <p className="text-muted-foreground">{feature.description}</p>
+                <CardContent className="p-6">
+                  <feature.icon className="h-12 w-12 text-primary mb-4" />
+                  <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
+                  <p className="text-muted-foreground">{feature.description}</p>
+                </CardContent>
               </Card>
             </motion.div>
           ))}
@@ -226,12 +261,11 @@ export default function HomePage() {
             Ready to Land Your Dream Job?
           </h2>
           <p className="text-xl mb-8 text-white/90 max-w-2xl mx-auto">
-            Join thousands of job seekers who are applying smarter with AI assistance.
-            Start your free trial today.
+            Start with a free plan, validate the workflow, and upgrade when you need more AI generation capacity.
           </p>
-          <Link href="/signup">
+          <Link href="/pricing">
             <Button size="lg" variant="secondary" className="text-lg px-8">
-              Get Started Free
+              View Pricing
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </Link>
@@ -241,17 +275,9 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t py-8 mt-20">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
-          <p>&copy; 2026 ApplyPilot. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} ApplyPilot. All rights reserved.</p>
         </div>
       </footer>
-    </div>
-  )
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="bg-card border rounded-xl p-6 hover:shadow-lg transition-shadow">
-      {children}
     </div>
   )
 }

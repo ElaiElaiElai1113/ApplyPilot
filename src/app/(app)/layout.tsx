@@ -3,10 +3,13 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { signOut } from '@/lib/auth'
-import { Sparkles, LayoutDashboard, FileText, Send, Table, LogOut, Menu, X } from 'lucide-react'
+import { Sparkles, LayoutDashboard, FileText, Send, Table, LogOut, Menu, X, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { getClientCurrentUser } from '@/lib/supabase/client-queries'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -22,6 +25,32 @@ export default function AppLayout({
 }) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [userName, setUserName] = useState('Account')
+  const [userEmail, setUserEmail] = useState('')
+  const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    async function loadUser() {
+      const user = await getClientCurrentUser()
+      if (!user) return
+
+      setUserName(
+        typeof user.user_metadata?.full_name === 'string' && user.user_metadata.full_name.trim()
+          ? user.user_metadata.full_name
+          : user.email?.split('@')[0] || 'Account'
+      )
+      setUserEmail(user.email || '')
+    }
+
+    void loadUser()
+  }, [])
+
+  const initials = userName
+    .split(' ')
+    .map((part) => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background to-secondary/5">
@@ -33,6 +62,7 @@ export default function AppLayout({
               variant="ghost"
               size="icon"
               onClick={() => setSidebarOpen(true)}
+              aria-label="Open navigation menu"
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -45,32 +75,41 @@ export default function AppLayout({
       </header>
 
       {/* Mobile Sidebar Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        >
-          <div
-            className="bg-background h-full w-64 p-4"
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {sidebarOpen ? (
+          <motion.div
+            className="fixed inset-0 bg-black/50 z-50 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={reduceMotion ? {} : { opacity: 1 }}
+            exit={reduceMotion ? {} : { opacity: 0 }}
           >
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-6 w-6 text-primary" />
-                <span className="font-bold text-lg">ApplyPilot</span>
+            <motion.div
+              className="bg-background h-full w-64 p-4"
+              onClick={(e) => e.stopPropagation()}
+              initial={reduceMotion ? false : { x: -280 }}
+              animate={reduceMotion ? {} : { x: 0 }}
+              exit={reduceMotion ? {} : { x: -280 }}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-6 w-6 text-primary" />
+                  <span className="font-bold text-lg">ApplyPilot</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setSidebarOpen(false)}
+                  aria-label="Close navigation menu"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
               </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setSidebarOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </Button>
-            </div>
-            <MobileNav />
-          </div>
-        </div>
-      )}
+              <MobileNav />
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* Desktop Sidebar */}
       <aside className="hidden lg:fixed lg:inset-y-0 lg:left-0 lg:z-50 lg:w-64 lg:border-r lg:bg-card">
@@ -104,6 +143,22 @@ export default function AppLayout({
 
           {/* User Section */}
           <div className="border-t p-4">
+            <div className="mb-4 flex items-center gap-3 rounded-lg bg-muted/50 p-3">
+              <Avatar className="h-10 w-10">
+                <AvatarFallback>{initials || 'AP'}</AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{userName}</p>
+                <p className="truncate text-xs text-muted-foreground">{userEmail}</p>
+              </div>
+            </div>
+            <Link
+              href="/pricing"
+              className="mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <Settings className="h-4 w-4" />
+              Pricing
+            </Link>
             <form action={async () => {
               await signOut()
             }}>

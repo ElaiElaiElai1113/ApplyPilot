@@ -14,9 +14,8 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import {
   deleteClientApplication,
   getClientApplications,
@@ -27,7 +26,6 @@ import { formatDate, getStatusColor, getMatchScoreColor } from '@/lib/utils'
 import type { Application } from '@/types/database'
 import {
   Search,
-  Filter,
   Eye,
   Trash2,
   Loader2,
@@ -39,7 +37,6 @@ import {
   MessageSquare,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
-import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { trackClientEvent } from '@/lib/analytics/client'
 
@@ -70,6 +67,7 @@ export default function TrackerPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const [deleteCandidate, setDeleteCandidate] = useState<Application | null>(null)
   const { toast } = useToast()
 
   const loadApplications = useCallback(async () => {
@@ -116,10 +114,6 @@ export default function TrackerPage() {
   }
 
   async function handleDelete(applicationId: string) {
-    if (!confirm('Are you sure you want to delete this application?')) {
-      return
-    }
-
     setIsDeleting(applicationId)
     try {
       await deleteClientApplication(applicationId)
@@ -136,6 +130,7 @@ export default function TrackerPage() {
       })
     } finally {
       setIsDeleting(null)
+      setDeleteCandidate(null)
     }
   }
 
@@ -250,7 +245,76 @@ export default function TrackerPage() {
                 </a>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <>
+                <div className="grid gap-4 p-4 md:hidden">
+                  {filteredApplications.map((app) => (
+                    <Card key={app.id}>
+                      <CardContent className="space-y-4 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-semibold">{app.company}</p>
+                            <p className="text-sm text-muted-foreground">{app.role}</p>
+                          </div>
+                          <Badge className={statusColors[app.status]}>
+                            <span className="capitalize">{app.status}</span>
+                          </Badge>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Match score</span>
+                          <span className={getMatchScoreColor(app.match_score)}>{app.match_score}%</span>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Saved {formatDate(app.created_at)}
+                        </div>
+                        <div className="grid gap-2">
+                          <Select
+                            value={app.status}
+                            onValueChange={(value) => handleStatusChange(app.id, value as Application['status'])}
+                            disabled={isUpdating === app.id}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="draft">Draft</SelectItem>
+                              <SelectItem value="applied">Applied</SelectItem>
+                              <SelectItem value="interview">Interview</SelectItem>
+                              <SelectItem value="rejected">Rejected</SelectItem>
+                              <SelectItem value="offer">Offer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => {
+                                setSelectedApplication(app)
+                                setIsDetailOpen(true)
+                              }}
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View details
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="flex-1"
+                              onClick={() => setDeleteCandidate(app)}
+                              disabled={isDeleting === app.id}
+                            >
+                              {isDeleting === app.id ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="mr-2 h-4 w-4 text-destructive" />
+                              )}
+                              Delete
+                            </Button>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+                <div className="hidden overflow-x-auto md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -306,16 +370,16 @@ export default function TrackerPage() {
                                   setSelectedApplication(app)
                                   setIsDetailOpen(true)
                                 }}
-                                title="View details"
+                                aria-label={`View details for ${app.company}`}
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
                               <Button
                                 variant="ghost"
                                 size="icon"
-                                onClick={() => handleDelete(app.id)}
+                                onClick={() => setDeleteCandidate(app)}
                                 disabled={isDeleting === app.id}
-                                title="Delete"
+                                aria-label={`Delete ${app.company} application`}
                               >
                                 {isDeleting === app.id ? (
                                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -330,7 +394,8 @@ export default function TrackerPage() {
                     </AnimatePresence>
                   </TableBody>
                 </Table>
-              </div>
+                </div>
+              </>
             )}
           </CardContent>
         </Card>
@@ -349,7 +414,7 @@ export default function TrackerPage() {
               </DialogHeader>
               <Tabs defaultValue="proposal">
                 <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="proposal">Proposal</TabsTrigger>
+                  <TabsTrigger value="proposal">Cover Letter</TabsTrigger>
                   <TabsTrigger value="resume">Resume</TabsTrigger>
                   <TabsTrigger value="match">Match</TabsTrigger>
                   <TabsTrigger value="interview">Interview</TabsTrigger>
@@ -422,6 +487,38 @@ export default function TrackerPage() {
               </Tabs>
             </>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteCandidate} onOpenChange={(open) => !open && setDeleteCandidate(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete application?</DialogTitle>
+            <DialogDescription>
+              {deleteCandidate
+                ? `This will permanently remove the ${deleteCandidate.role} application for ${deleteCandidate.company}.`
+                : 'This action cannot be undone.'}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteCandidate(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteCandidate && handleDelete(deleteCandidate.id)}
+              disabled={isDeleting === deleteCandidate?.id}
+            >
+              {isDeleting === deleteCandidate?.id ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                'Delete application'
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

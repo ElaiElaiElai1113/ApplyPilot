@@ -385,31 +385,26 @@ function buildStructuredFallback(
 
   const questionCandidates = [
     'Tell me about a time you caught a small but critical detail before submitting work.',
-    'How do you ensure quote pricing and margin calculations are accurate every time?',
-    'Walk me through your process for handling high-volume email triage using SOPs.',
-    'How do you structure your daily work summary and status updates?',
-    'Describe a repetitive workflow where you improved speed without reducing accuracy.',
+    `How do you prioritize the most important requirements for a ${role} role?`,
+    `What part of the ${company} opportunity stands out to you most, and why?`,
+    'How do you keep quality high when managing repetitive or detail-heavy work?',
+    'How do you communicate progress, blockers, and priorities in a structured way?',
     ...extractQuestionsFromText(content),
   ]
 
   const proposal = [
-    'Precision',
     `Dear Hiring Manager at ${company},`,
-    `I am applying for the ${role} role and I am confident I can contribute as a reliable execution-focused VA. I have hands-on virtual assistant experience managing administrative workflows, documentation, coordination, and structured daily operations.`,
-    'I work best in SOP-driven environments where attention to detail, accurate data handling, and clear written communication are essential. I am comfortable working with repetitive, process-based tasks and consistently double-check outputs before submission.',
-    'I can commit to long-term, full-time structured work and I am prepared to follow your application instructions exactly, including daily summaries and clear status reporting.',
-    'Sincerely,',
-    'Elijah N. De Los Santos',
+    `I am applying for the ${role} role and would bring a reliable, detail-oriented approach grounded in the experience already reflected in my resume.`,
+    `My background aligns with the core requirements for ${company}, and I am especially comfortable translating existing experience into clear, professional execution that supports the team quickly.`,
+    'Thank you for your time and consideration. I would welcome the opportunity to discuss how my experience can support your team.',
   ].join('\n\n')
 
   const tailoredResume = `${resumeContent}
 
 ROLE-ALIGNED HIGHLIGHTS
-- Virtual Assistant experience in administrative workflow management, documentation, and coordination.
-- Process-oriented work style with Lean Six Sigma foundation and strong rule-following discipline.
-- Strong written communication for professional client-facing and internal updates.
-- Comfortable handling structured, repetitive tasks with consistent quality control.
-- Working knowledge of spreadsheets and operational tracking tools in day-to-day execution.`
+- Highlights preserved and reordered to better match the ${role} position at ${company}.
+- Emphasizes transferable experience, relevant tools, and measurable strengths already present in the source resume.
+- Keeps wording grounded in existing resume evidence rather than inventing new claims.`
 
   return {
     proposal_message: proposal,
@@ -943,13 +938,10 @@ ${tailorPlan.selected_facts.slice(0, 14).map((f) => `- ${f.text}`).join('\n')}`
   } catch {
     qualityFlags.push('proposal_fallback_used')
     proposalMessage = [
-      'Precision',
       `Dear Hiring Manager at ${company},`,
-      `I am applying for the ${role} role. My background includes administrative workflow support, documentation, and process-driven task execution with a strong focus on accuracy and consistency.`,
-      'I am comfortable working in SOP-based environments, handling structured daily operations, and communicating clearly in written English with reliable status updates.',
+      `I am applying for the ${role} role. My experience includes structured, detail-oriented work that can be adapted to the priorities outlined for this position.`,
+      `I focus on clear communication, reliable execution, and tailoring my work to the needs of the team and role.`,
       'Thank you for your consideration.',
-      'Sincerely,',
-      'Elijah N. De Los Santos',
     ].join('\n\n')
   }
 

@@ -10,14 +10,17 @@ import {
   Send,
   ArrowRight,
   Loader2,
+  CheckCircle2,
+  UserCircle2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { getClientCurrentUser, getClientDashboardStats } from '@/lib/supabase/client-queries'
+import { getClientCurrentUser, getClientDashboardStats, getClientResumes } from '@/lib/supabase/client-queries'
 import { formatDate, getStatusColor, getMatchScoreColor } from '@/lib/utils'
 import type { Application } from '@/types/database'
+import type { LucideIcon } from 'lucide-react'
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -46,8 +49,10 @@ export default function DashboardPage() {
     averageMatchScore: number
     totalApplications: number
     recentApplications: Application[]
+    resumeCount: number
   } | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [userName, setUserName] = useState('there')
 
   useEffect(() => {
     async function loadData() {
@@ -55,8 +60,20 @@ export default function DashboardPage() {
         const user = await getClientCurrentUser()
         if (!user) return
 
-        const data = await getClientDashboardStats(user.id)
-        setStats(data)
+        setUserName(
+          typeof user.user_metadata?.full_name === 'string' && user.user_metadata.full_name.trim()
+            ? user.user_metadata.full_name.split(' ')[0]
+            : user.email?.split('@')[0] || 'there'
+        )
+
+        const [data, resumes] = await Promise.all([
+          getClientDashboardStats(user.id),
+          getClientResumes(user.id),
+        ])
+        setStats({
+          ...data,
+          resumeCount: resumes.length,
+        })
       } catch (error) {
         console.error('Failed to load dashboard:', error)
       } finally {
@@ -86,16 +103,49 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold">Dashboard</h1>
           <p className="text-muted-foreground mt-1">
-            Welcome back! Here's your job application overview.
+            Welcome back, {userName}! Here&apos;s your job application overview.
           </p>
         </div>
-        <Link href="/generate">
+        <Link href={stats?.resumeCount ? '/generate' : '/resumes'}>
           <Button size="lg">
-            <Send className="mr-2 h-5 w-5" />
-            Quick Generate
+            {stats?.resumeCount ? <Send className="mr-2 h-5 w-5" /> : <FileText className="mr-2 h-5 w-5" />}
+            {stats?.resumeCount ? 'Quick Generate' : 'Add Your Resume First'}
           </Button>
         </Link>
       </motion.div>
+
+      {(stats?.resumeCount === 0 || (stats?.totalApplications || 0) === 0) ? (
+        <motion.div variants={itemVariants}>
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader>
+              <CardTitle>First-run checklist</CardTitle>
+            </CardHeader>
+            <CardContent className="grid gap-4 md:grid-cols-3">
+              <ChecklistItem
+                icon={FileText}
+                title="Add your resume"
+                description="Upload or paste your master resume into the vault."
+                done={(stats?.resumeCount || 0) > 0}
+                href="/resumes"
+              />
+              <ChecklistItem
+                icon={Send}
+                title="Generate your first package"
+                description="Create a tailored cover letter and resume from a real job description."
+                done={(stats?.totalApplications || 0) > 0}
+                href={stats?.resumeCount ? '/generate' : '/resumes'}
+              />
+              <ChecklistItem
+                icon={UserCircle2}
+                title="Track progress"
+                description="Save your first result so the tracker becomes useful immediately."
+                done={(stats?.totalApplications || 0) > 0}
+                href={(stats?.totalApplications || 0) > 0 ? '/tracker' : '/generate'}
+              />
+            </CardContent>
+          </Card>
+        </motion.div>
+      ) : null}
 
       {/* Stats Cards */}
       <motion.div variants={itemVariants}>
@@ -216,7 +266,7 @@ function StatsCard({
 }: {
   title: string
   value: string | number
-  icon: any
+  icon: LucideIcon
   color: string
 }) {
   return (
@@ -235,5 +285,35 @@ function StatsCard({
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function ChecklistItem({
+  icon: Icon,
+  title,
+  description,
+  done,
+  href,
+}: {
+  icon: LucideIcon
+  title: string
+  description: string
+  done: boolean
+  href: string
+}) {
+  return (
+    <div className="rounded-xl border bg-background p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Icon className="h-5 w-5 text-primary" />
+          <p className="font-medium">{title}</p>
+        </div>
+        {done ? <CheckCircle2 className="h-5 w-5 text-primary" /> : null}
+      </div>
+      <p className="mb-4 text-sm text-muted-foreground">{description}</p>
+      <Button asChild size="sm" variant={done ? 'outline' : 'default'}>
+        <Link href={href}>{done ? 'Review' : 'Start'}</Link>
+      </Button>
+    </div>
   )
 }

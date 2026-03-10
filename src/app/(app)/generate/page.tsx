@@ -59,6 +59,7 @@ export default function GeneratePage() {
   })
   const [results, setResults] = useState<GenerateApplicationResponse | null>(null)
   const [activeTab, setActiveTab] = useState<ResultTab>('proposal')
+  const [quotaMessage, setQuotaMessage] = useState('')
 
   // Load resumes from Supabase for the current authenticated user
   useEffect(() => {
@@ -113,6 +114,7 @@ export default function GeneratePage() {
     }
 
     setIsGenerating(true)
+    setQuotaMessage('')
     void trackClientEvent('generation_started', {
       company_length: formData.company.length,
       role_length: formData.role.length,
@@ -140,6 +142,9 @@ export default function GeneratePage() {
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Please try again later'
+      if (message.toLowerCase().includes('monthly generation limit reached')) {
+        setQuotaMessage(message)
+      }
       toast({
         title: 'Generation failed',
         description: message,
@@ -263,8 +268,62 @@ export default function GeneratePage() {
   }
 
   function handleRegenerate() {
-    setResults(null)
-    handleGenerate()
+    toast({
+      title: 'Generating a replacement',
+      description: 'Your current results stay visible until the new version is ready.',
+    })
+    void handleGenerate()
+  }
+
+  function formatSections(text: string) {
+    return text
+      .split(/\n{2,}/)
+      .map((section) => section.trim())
+      .filter(Boolean)
+  }
+
+  function copyFullPackage() {
+    if (!results) return
+
+    const packageText = [
+      `Company: ${formData.company}`,
+      `Role: ${formData.role}`,
+      '',
+      'Cover Letter',
+      results.proposal_message,
+      '',
+      'Tailored Resume',
+      results.tailored_resume,
+      '',
+      `Match Score: ${results.match_score}%`,
+      `Missing Keywords: ${results.missing_keywords.join(', ') || 'None identified'}`,
+      '',
+      'Interview Questions',
+      ...results.interview_questions.map((question, index) => `${index + 1}. ${question}`),
+    ].join('\n')
+
+    void handleCopy(packageText)
+  }
+
+  function downloadPackage() {
+    if (!results) return
+
+    const blob = new Blob(
+      [[
+        `Cover Letter\n\n${results.proposal_message}\n\n`,
+        `Tailored Resume\n\n${results.tailored_resume}\n\n`,
+        `Match Score: ${results.match_score}%\n`,
+        `Missing Keywords: ${results.missing_keywords.join(', ') || 'None identified'}\n\n`,
+        `Interview Questions\n${results.interview_questions.map((question, index) => `${index + 1}. ${question}`).join('\n')}`,
+      ].join('')],
+      { type: 'text/plain;charset=utf-8' }
+    )
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `${formData.company || 'application'}-${formData.role || 'package'}.txt`
+    anchor.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -292,12 +351,21 @@ export default function GeneratePage() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <Card>
-            <CardHeader>
-              <CardTitle>Job Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Job Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {quotaMessage ? (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4">
+                    <p className="font-medium">Monthly generation limit reached</p>
+                    <p className="mt-1 text-sm text-muted-foreground">{quotaMessage}</p>
+                    <Button asChild className="mt-3" size="sm">
+                      <a href="/pricing">View pricing</a>
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="space-y-2">
                 <Label htmlFor="jobUrl">Job Posting URL (Optional)</Label>
                 <div className="flex gap-2">
                   <Input
@@ -442,7 +510,7 @@ export default function GeneratePage() {
                 {/* Match Score Card */}
                 <Card>
                   <CardContent className="p-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-3">
                         <Target className="h-6 w-6 text-primary" />
                         <div>
@@ -452,19 +520,29 @@ export default function GeneratePage() {
                           </p>
                         </div>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={handleRegenerate}
-                        disabled={isGenerating}
-                        title="Regenerate"
-                      >
-                        {isGenerating ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="h-4 w-4" />
-                        )}
-                      </Button>
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="outline" onClick={copyFullPackage}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy full package
+                        </Button>
+                        <Button variant="outline" onClick={downloadPackage}>
+                          <FileText className="mr-2 h-4 w-4" />
+                          Download .txt
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={handleRegenerate}
+                          disabled={isGenerating}
+                          aria-label="Regenerate and replace current results"
+                        >
+                          {isGenerating ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                          )}
+                          Regenerate
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -474,7 +552,7 @@ export default function GeneratePage() {
                   <TabsList className="grid w-full grid-cols-4">
                     <TabsTrigger value="proposal">
                       <MessageSquare className="mr-2 h-4 w-4" />
-                      Proposal
+                      Cover Letter
                     </TabsTrigger>
                     <TabsTrigger value="resume">
                       <FileText className="mr-2 h-4 w-4" />
@@ -500,15 +578,20 @@ export default function GeneratePage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleCopy(results.proposal_message)}
-                            title="Copy to clipboard"
+                            aria-label="Copy cover letter"
                           >
                             <Copy className="h-4 w-4" />
                           </Button>
                         </div>
                       </CardHeader>
                       <CardContent>
-                        <div className="whitespace-pre-wrap text-sm leading-relaxed max-h-[400px] overflow-y-auto">
-                          {results.proposal_message}
+                        <div className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">
+                          {results.proposal_message.trim().split(/\s+/).length} words
+                        </div>
+                        <div className="max-h-[400px] space-y-4 overflow-y-auto text-sm leading-relaxed">
+                          {formatSections(results.proposal_message).map((paragraph, index) => (
+                            <p key={index}>{paragraph}</p>
+                          ))}
                         </div>
                       </CardContent>
                     </Card>
@@ -524,15 +607,22 @@ export default function GeneratePage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => handleCopy(results.tailored_resume)}
-                            title="Copy to clipboard"
+                            aria-label="Copy tailored resume"
                           >
                             <Copy className="h-4 w-4" />
                           </Button>
                         </div>
                       </CardHeader>
                       <CardContent>
-                        <div className="whitespace-pre-wrap text-sm leading-relaxed max-h-[400px] overflow-y-auto">
-                          {results.tailored_resume}
+                        <div className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">
+                          {results.tailored_resume.trim().split(/\s+/).length} words
+                        </div>
+                        <div className="max-h-[400px] space-y-3 overflow-y-auto text-sm leading-relaxed">
+                          {formatSections(results.tailored_resume).map((paragraph, index) => (
+                            <p key={index} className="whitespace-pre-wrap">
+                              {paragraph}
+                            </p>
+                          ))}
                         </div>
                       </CardContent>
                     </Card>

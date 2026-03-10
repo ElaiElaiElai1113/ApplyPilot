@@ -31,7 +31,7 @@ export async function signUp(formData: FormData) {
   void trackServerEvent('signup_completed')
 
   revalidatePath('/', 'layout')
-  redirect('/dashboard')
+  redirect('/signup/confirm')
 }
 
 export async function signIn(formData: FormData) {
