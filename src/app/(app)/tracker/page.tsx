@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Table,
@@ -41,6 +41,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { trackClientEvent } from '@/lib/analytics/client'
 
 type StatusFilter = 'all' | 'draft' | 'applied' | 'interview' | 'rejected' | 'offer'
 
@@ -71,11 +72,7 @@ export default function TrackerPage() {
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
   const { toast } = useToast()
 
-  useEffect(() => {
-    loadApplications()
-  }, [])
-
-  async function loadApplications() {
+  const loadApplications = useCallback(async () => {
     try {
       const user = await getClientCurrentUser()
       if (!user) return
@@ -90,7 +87,11 @@ export default function TrackerPage() {
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    loadApplications()
+  }, [loadApplications])
 
   async function handleStatusChange(applicationId: string, newStatus: Application['status']) {
     setIsUpdating(applicationId)
@@ -100,6 +101,9 @@ export default function TrackerPage() {
       toast({
         title: 'Status updated',
         description: `Application status changed to ${newStatus}`,
+      })
+      void trackClientEvent('application_status_updated', {
+        status: newStatus,
       })
     } catch (error) {
       toast({
@@ -124,6 +128,7 @@ export default function TrackerPage() {
         title: 'Application deleted',
         description: 'The application has been removed from your tracker',
       })
+      void trackClientEvent('application_deleted')
     } catch (error) {
       toast({
         title: 'Failed to delete',

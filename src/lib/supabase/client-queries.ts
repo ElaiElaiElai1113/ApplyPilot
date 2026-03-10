@@ -4,6 +4,30 @@ import { createBrowserSupabaseClient } from './client'
 import type { Resume, Application } from '@/types/database'
 import type { User } from '@supabase/supabase-js'
 
+async function ensureClientProfileExists(userId: string) {
+  const supabase = createBrowserSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user || user.id !== userId) {
+    throw new Error('Session expired. Please sign in again.')
+  }
+
+  const fullName =
+    typeof user.user_metadata?.full_name === 'string'
+      ? user.user_metadata.full_name
+      : null
+
+  const { error } = await supabase.from('profiles').upsert({
+    id: user.id,
+    email: user.email ?? `${user.id}@no-email.local`,
+    full_name: fullName,
+  })
+
+  if (error) throw error
+}
+
 export async function getClientCurrentUser(): Promise<User | null> {
   const supabase = createBrowserSupabaseClient()
   const {
@@ -19,7 +43,7 @@ export async function getClientResumes(userId: string): Promise<Resume[]> {
   const supabase = createBrowserSupabaseClient()
   const { data, error } = await supabase
     .from('resumes')
-    .select('*')
+    .select('id,user_id,title,content,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
@@ -31,7 +55,7 @@ export async function getClientApplications(userId: string): Promise<Application
   const supabase = createBrowserSupabaseClient()
   const { data, error } = await supabase
     .from('applications')
-    .select('*')
+    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,status,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
@@ -48,7 +72,7 @@ export async function getClientDashboardStats(userId: string) {
 
   const { data: weeklyApps, error: weeklyError } = await supabase
     .from('applications')
-    .select('*')
+    .select('id')
     .eq('user_id', userId)
     .gte('created_at', weekAgo.toISOString())
 
@@ -61,7 +85,7 @@ export async function getClientDashboardStats(userId: string) {
   // Get recent applications
   const { data: recentApps, error: recentError } = await supabase
     .from('applications')
-    .select('*')
+    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,status,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(5)
@@ -148,6 +172,95 @@ export async function createClientApplication(
     .select()
     .single()
 
+  if (!error) return data
+
+  if (error.code === '23503') {
+    await ensureClientProfileExists(userId)
+    const { data: retryData, error: retryError } = await supabase
+      .from('applications')
+      .insert({
+        user_id: userId,
+        resume_id: resumeId,
+        company,
+        role,
+        job_description: jobDescription,
+        proposal,
+        tailored_resume: tailoredResume,
+        match_score: matchScore,
+        missing_keywords: missingKeywords,
+        interview_questions: interviewQuestions,
+        status: 'draft',
+      })
+      .select()
+      .single()
+
+    if (retryError) throw retryError
+    return retryData
+  }
+
+  throw error
+}
+
+export async function createClientResume(
+  userId: string,
+  title: string,
+  content: string
+): Promise<Resume> {
+  const supabase = createBrowserSupabaseClient()
+  const { data, error } = await supabase
+    .from('resumes')
+    .insert({
+      user_id: userId,
+      title,
+      content,
+    })
+    .select()
+    .single()
+
+  if (!error) return data
+
+  if (error.code === '23503') {
+    await ensureClientProfileExists(userId)
+    const { data: retryData, error: retryError } = await supabase
+      .from('resumes')
+      .insert({
+        user_id: userId,
+        title,
+        content,
+      })
+      .select()
+      .single()
+
+    if (retryError) throw retryError
+    return retryData
+  }
+
+  throw error
+}
+
+export async function updateClientResume(
+  resumeId: string,
+  title: string,
+  content: string
+): Promise<Resume> {
+  const supabase = createBrowserSupabaseClient()
+  const { data, error } = await supabase
+    .from('resumes')
+    .update({ title, content })
+    .eq('id', resumeId)
+    .select()
+    .single()
+
   if (error) throw error
   return data
+}
+
+export async function deleteClientResume(resumeId: string): Promise<void> {
+  const supabase = createBrowserSupabaseClient()
+  const { error } = await supabase
+    .from('resumes')
+    .delete()
+    .eq('id', resumeId)
+
+  if (error) throw error
 }

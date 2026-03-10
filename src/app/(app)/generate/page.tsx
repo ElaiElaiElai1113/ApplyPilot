@@ -24,7 +24,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { generateApplication, type GenerateApplicationResponse } from '@/lib/ai'
+import {
+  extractJobPostingFromUrl,
+  generateApplication,
+  type GenerateApplicationResponse,
+} from '@/lib/ai'
 import {
   createClientApplication,
   getClientCurrentUser,
@@ -34,6 +38,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useRouter } from 'next/navigation'
 import type { Resume } from '@/types/database'
 import { getMatchScoreColor } from '@/lib/utils'
+import { trackClientEvent } from '@/lib/analytics/client'
 
 type ResultTab = 'proposal' | 'resume' | 'match' | 'interview'
 
@@ -43,9 +48,11 @@ export default function GeneratePage() {
   const [resumes, setResumes] = useState<Resume[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isImportingUrl, setIsImportingUrl] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [selectedResumeId, setSelectedResumeId] = useState('')
   const [formData, setFormData] = useState({
+    jobUrl: '',
     company: '',
     role: '',
     jobDescription: '',
@@ -106,6 +113,11 @@ export default function GeneratePage() {
     }
 
     setIsGenerating(true)
+    void trackClientEvent('generation_started', {
+      company_length: formData.company.length,
+      role_length: formData.role.length,
+      job_description_length: formData.jobDescription.length,
+    })
     try {
       const response = await generateApplication({
         company: formData.company,
@@ -121,14 +133,60 @@ export default function GeneratePage() {
         title: 'Application generated!',
         description: 'Review and save your application package',
       })
+      void trackClientEvent('generation_succeeded', {
+        match_score: response.match_score,
+        missing_keywords_count: response.missing_keywords.length,
+      })
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Please try again later'
       toast({
         title: 'Generation failed',
-        description: 'Please try again later',
+        description: message,
         variant: 'destructive',
+      })
+      void trackClientEvent('generation_failed', {
+        reason: message,
       })
     } finally {
       setIsGenerating(false)
+    }
+  }
+
+  async function handleImportFromUrl() {
+    if (!formData.jobUrl.trim()) {
+      toast({
+        title: 'Please enter a job URL',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    setIsImportingUrl(true)
+    void trackClientEvent('job_url_import_started')
+    try {
+      const extracted = await extractJobPostingFromUrl(formData.jobUrl)
+      setFormData((prev) => ({
+        ...prev,
+        company: prev.company.trim() || extracted.company || prev.company,
+        role: prev.role.trim() || extracted.role || prev.role,
+        jobDescription: extracted.jobDescription,
+      }))
+      toast({
+        title: 'Job details imported',
+        description: 'Review the extracted description before generating.',
+      })
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Failed to import job URL'
+      toast({
+        title: 'Import failed',
+        description: message,
+        variant: 'destructive',
+      })
+      void trackClientEvent('job_url_import_failed', { reason: message })
+    } finally {
+      setIsImportingUrl(false)
     }
   }
 
@@ -172,6 +230,10 @@ export default function GeneratePage() {
       toast({
         title: 'Application saved!',
         description: 'Your application has been added to the tracker',
+      })
+      void trackClientEvent('application_saved', {
+        company_length: formData.company.length,
+        role_length: formData.role.length,
       })
 
       router.push('/tracker')
@@ -236,6 +298,30 @@ export default function GeneratePage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
+                <Label htmlFor="jobUrl">Job Posting URL (Optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="jobUrl"
+                    value={formData.jobUrl}
+                    onChange={(e) => setFormData({ ...formData, jobUrl: e.target.value })}
+                    placeholder="https://www.linkedin.com/jobs/view/..."
+                    disabled={isGenerating || isImportingUrl}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleImportFromUrl}
+                    disabled={isGenerating || isImportingUrl}
+                  >
+                    {isImportingUrl ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      'Import'
+                    )}
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="company">Company Name *</Label>
                 <Input
                   id="company"
@@ -296,7 +382,7 @@ export default function GeneratePage() {
               </div>
               <Button
                 onClick={handleGenerate}
-                disabled={isGenerating || resumes.length === 0}
+                disabled={isGenerating || isImportingUrl || resumes.length === 0}
                 className="w-full"
                 size="lg"
               >

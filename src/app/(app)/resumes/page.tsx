@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   FileText,
@@ -13,6 +13,8 @@ import {
   Copy,
   Check,
   X,
+  Upload,
+  Wand2,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -23,34 +25,65 @@ import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import type { Resume } from '@/types/database'
 import { formatDate, truncateText } from '@/lib/utils'
+import {
+  createClientResume,
+  deleteClientResume,
+  getClientCurrentUser,
+  getClientResumes,
+  updateClientResume,
+} from '@/lib/supabase/client-queries'
+import { useRouter } from 'next/navigation'
+import { trackClientEvent } from '@/lib/analytics/client'
+import { formatResumeText } from '@/lib/resume-format'
 
 export default function ResumesPage() {
+  const router = useRouter()
   const [resumes, setResumes] = useState<Resume[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const [isExtractingPdf, setIsExtractingPdf] = useState(false)
   const [selectedResume, setSelectedResume] = useState<Resume | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({ title: '', content: '' })
   const { toast } = useToast()
+  const [currentUserId, setCurrentUserId] = useState<string>('')
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  // Load resumes from local storage
+  // Load resumes from Supabase for the current authenticated user
   useEffect(() => {
-    const saved = localStorage.getItem('resumes')
-    if (saved) {
+    async function loadResumes() {
       try {
-        const parsed = JSON.parse(saved)
-        setResumes(parsed)
-        if (parsed.length > 0 && !selectedResume) {
-          setSelectedResume(parsed[0])
+        const user = await getClientCurrentUser()
+        if (!user) {
+          toast({
+            title: 'Please sign in first',
+            variant: 'destructive',
+          })
+          router.push('/login')
+          return
         }
-      } catch (e) {
-        console.error('Failed to load resumes:', e)
+
+        setCurrentUserId(user.id)
+        const data = await getClientResumes(user.id)
+        setResumes(data)
+        if (data.length > 0) {
+          setSelectedResume(data[0])
+        }
+      } catch (error) {
+        toast({
+          title: 'Failed to load resumes',
+          description: 'Please try again',
+          variant: 'destructive',
+        })
+      } finally {
+        setIsLoading(false)
       }
     }
-    setIsLoading(false)
-  }, [])
+
+    loadResumes()
+  }, [router, toast])
 
   async function handleSave() {
     if (!formData.title.trim() || !formData.content.trim()) {
@@ -63,24 +96,32 @@ export default function ResumesPage() {
 
     setIsSaving(true)
     try {
-      const newResume: Resume = {
-        id: Date.now().toString(),
-        title: formData.title,
-        content: formData.content,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        user_id: 'local',
+      if (!currentUserId) {
+        toast({
+          title: 'Please sign in first',
+          variant: 'destructive',
+        })
+        router.push('/login')
+        return
       }
 
       let updated = [...resumes]
       if (isEditing && selectedResume) {
-        updated = updated.map(r => r.id === selectedResume.id ? newResume : r)
+        const saved = await updateClientResume(
+          selectedResume.id,
+          formData.title,
+          formData.content
+        )
+        updated = updated.map(r => (r.id === selectedResume.id ? saved : r))
       } else {
-        updated = [newResume, ...updated]
+        const saved = await createClientResume(
+          currentUserId,
+          formData.title,
+          formData.content
+        )
+        updated = [saved, ...updated]
       }
 
-      // Save to localStorage
-      localStorage.setItem('resumes', JSON.stringify(updated))
       setResumes(updated)
 
       toast({
@@ -89,13 +130,20 @@ export default function ResumesPage() {
           ? 'Your resume has been updated successfully'
           : 'Your resume has been added to the vault',
       })
+      void trackClientEvent(isEditing ? 'resume_updated' : 'resume_created', {
+        content_length: formData.content.length,
+      })
 
       setIsDialogOpen(false)
       resetForm()
     } catch (error) {
+      const description =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Please try again'
       toast({
         title: 'Failed to save resume',
-        description: 'Please try again',
+        description,
         variant: 'destructive',
       })
     } finally {
@@ -106,14 +154,15 @@ export default function ResumesPage() {
   async function handleDelete(id: string) {
     setIsDeleting(id)
     try {
+      await deleteClientResume(id)
       const updated = resumes.filter(r => r.id !== id)
-      localStorage.setItem('resumes', JSON.stringify(updated))
       setResumes(updated)
 
       toast({
         title: 'Resume deleted',
         description: 'Your resume has been removed from the vault',
       })
+      void trackClientEvent('resume_deleted')
     } catch (error) {
       toast({
         title: 'Failed to delete resume',
@@ -123,6 +172,72 @@ export default function ResumesPage() {
     } finally {
       setIsDeleting(null)
     }
+  }
+
+  async function handleImportPdf(file: File) {
+    setIsExtractingPdf(true)
+    try {
+      const payload = new FormData()
+      payload.append('file', file)
+      const response = await fetch('/api/resume/extract', {
+        method: 'POST',
+        body: payload,
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to import PDF')
+      }
+
+      setFormData((prev) => ({
+        title: prev.title.trim() || data.title || prev.title,
+        content: data.content || prev.content,
+      }))
+
+      toast({
+        title: 'PDF imported',
+        description: 'Review and edit the extracted text before saving.',
+      })
+      void trackClientEvent('resume_pdf_import_succeeded', {
+        filename: file.name,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to import PDF'
+      toast({
+        title: 'PDF import failed',
+        description: message,
+        variant: 'destructive',
+      })
+      void trackClientEvent('resume_pdf_import_failed', {
+        reason: message,
+      })
+    } finally {
+      setIsExtractingPdf(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  function handleReformatContent() {
+    if (!formData.content.trim()) {
+      toast({
+        title: 'No resume content to reformat',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const formatted = formatResumeText(formData.content)
+    setFormData((prev) => ({ ...prev, content: formatted }))
+    toast({
+      title: 'Resume content reformatted',
+      description: 'Review and adjust any details before saving.',
+    })
+    void trackClientEvent('resume_content_reformatted', {
+      original_length: formData.content.length,
+      formatted_length: formatted.length,
+    })
   }
 
   function handleEdit(resume: Resume) {
@@ -291,6 +406,45 @@ export default function ResumesPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
+              <Label>Import From PDF (Optional)</Label>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      void handleImportPdf(file)
+                    }
+                  }}
+                  disabled={isSaving || isExtractingPdf}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSaving || isExtractingPdf}
+                >
+                  {isExtractingPdf ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Extracting...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload PDF
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Up to 5 MB
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="title">Resume Title</Label>
               <Input
                 id="title"
@@ -301,7 +455,19 @@ export default function ResumesPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="content">Resume Content</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="content">Resume Content</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReformatContent}
+                  disabled={isSaving || isExtractingPdf}
+                >
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  Reformat
+                </Button>
+              </div>
               <Textarea
                 id="content"
                 value={formData.content}

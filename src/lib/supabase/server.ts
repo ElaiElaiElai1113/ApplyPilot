@@ -2,20 +2,28 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import type { User } from '@supabase/supabase-js'
 
-export function createClient() {
-  const cookieStore = cookies()
+export async function createClient() {
+  const cookieStore = await cookies()
 
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        // @ts-ignore - Using runtime cookies API
         getAll() {
-          return Object.fromEntries(
-            // @ts-ignore
-            (cookieStore as any).getAll().map(({ name, value }) => [name, value])
-          )
+          return cookieStore.getAll()
+        },
+        setAll(
+          cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>
+        ) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              cookieStore.set(name, value, options as any)
+            })
+          } catch {
+            // In contexts where response cookies are immutable (e.g. some RSC reads),
+            // Supabase still works for read-only operations.
+          }
         },
       },
     }
@@ -23,7 +31,7 @@ export function createClient() {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   return user
 }

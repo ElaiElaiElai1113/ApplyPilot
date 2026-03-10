@@ -111,6 +111,61 @@ export interface Database {
           updated_at?: string
         }
       }
+      ai_generation_usage: {
+        Row: {
+          id: string
+          user_id: string
+          model: string
+          status: 'success' | 'failed'
+          prompt_chars: number
+          response_chars: number
+          error_message: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          model: string
+          status: 'success' | 'failed'
+          prompt_chars?: number
+          response_chars?: number
+          error_message?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          model?: string
+          status?: 'success' | 'failed'
+          prompt_chars?: number
+          response_chars?: number
+          error_message?: string | null
+          created_at?: string
+        }
+      }
+      analytics_events: {
+        Row: {
+          id: string
+          user_id: string
+          event_name: string
+          properties: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          event_name: string
+          properties?: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          event_name?: string
+          properties?: Json
+          created_at?: string
+        }
+      }
     }
     Views: {
       [_ in never]: never

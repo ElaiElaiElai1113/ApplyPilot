@@ -4,7 +4,7 @@ import { createClient } from './server'
 import type { Resume, Application } from '@/types/database'
 
 export async function getUserResumes(userId: string): Promise<Resume[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('resumes')
     .select('*')
@@ -20,7 +20,7 @@ export async function createResume(
   title: string,
   content: string
 ): Promise<Resume> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('resumes')
     .insert({
@@ -40,7 +40,7 @@ export async function updateResume(
   title: string,
   content: string
 ): Promise<Resume> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('resumes')
     .update({ title, content })
@@ -53,7 +53,7 @@ export async function updateResume(
 }
 
 export async function deleteResume(resumeId: string): Promise<void> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { error } = await supabase
     .from('resumes')
     .delete()
@@ -63,7 +63,7 @@ export async function deleteResume(resumeId: string): Promise<void> {
 }
 
 export async function getResumeById(resumeId: string): Promise<Resume | null> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('resumes')
     .select('*')
@@ -75,7 +75,7 @@ export async function getResumeById(resumeId: string): Promise<Resume | null> {
 }
 
 export async function getUserApplications(userId: string): Promise<Application[]> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('applications')
     .select('*')
@@ -98,7 +98,7 @@ export async function createApplication(
   missingKeywords: string[],
   interviewQuestions: string[]
 ): Promise<Application> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('applications')
     .insert({
@@ -125,7 +125,7 @@ export async function updateApplicationStatus(
   applicationId: string,
   status: Application['status']
 ): Promise<Application> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('applications')
     .update({ status })
@@ -138,7 +138,7 @@ export async function updateApplicationStatus(
 }
 
 export async function deleteApplication(applicationId: string): Promise<void> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { error } = await supabase
     .from('applications')
     .delete()
@@ -150,7 +150,7 @@ export async function deleteApplication(applicationId: string): Promise<void> {
 export async function getApplicationById(
   applicationId: string
 ): Promise<Application | null> {
-  const supabase = createClient()
+  const supabase = await createClient()
   const { data, error } = await supabase
     .from('applications')
     .select('*')
@@ -162,7 +162,7 @@ export async function getApplicationById(
 }
 
 export async function getDashboardStats(userId: string) {
-  const supabase = createClient()
+  const supabase = await createClient()
 
   // Get applications from this week
   const weekAgo = new Date()
