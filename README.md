@@ -50,6 +50,7 @@ Optional but recommended:
 - `npm run typecheck` - TypeScript checks
 - `npm run build` - production build
 - `npm run test:smoke` - lint + typecheck + build
+- `npm run test:ai-regression` - offline AI output regression gate (prompt leakage/format checks)
 - `npm run test:e2e` - Playwright end-to-end smoke tests
 
 ## Production Hardening Notes
@@ -77,3 +78,13 @@ Deploy on Vercel or any Node-compatible host.
 
 ## Status
 This repository is ready for public production with environment hardening, legal review, billing integration, and monitoring configured in your deployment environment.
+
+## AI Eval Harness
+- Fixture file: `scripts/fixtures/ai-regression-cases.json`
+- Runner: `scripts/ai-regression-eval.mjs`
+- CI threshold env (optional): `AI_EVAL_MIN_PASS_RATE` (default `0.9`)
+
+Run locally:
+```bash
+npm run test:ai-regression
+```

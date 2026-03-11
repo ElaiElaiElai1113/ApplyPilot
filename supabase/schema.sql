@@ -35,6 +35,13 @@ CREATE TABLE IF NOT EXISTS public.applications (
   missing_keywords TEXT[] DEFAULT '{}',
   interview_questions TEXT[] DEFAULT '{}',
   template_pack TEXT,
+  job_source_url TEXT,
+  job_fetched_at TIMESTAMP WITH TIME ZONE,
+  job_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  cover_letter_variants JSONB NOT NULL DEFAULT '[]'::jsonb,
+  cover_letter_selected_index INTEGER NOT NULL DEFAULT 0,
+  generation_quality JSONB NOT NULL DEFAULT '{}'::jsonb,
+  generation_version TEXT NOT NULL DEFAULT 'v2',
   confidence_insights JSONB NOT NULL DEFAULT '[]'::jsonb,
   truth_lock JSONB NOT NULL DEFAULT '[]'::jsonb,
   interview_bridge JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -53,6 +60,7 @@ CREATE TABLE IF NOT EXISTS public.ai_generation_usage (
   status TEXT NOT NULL CHECK (status IN ('success', 'failed')),
   prompt_chars INTEGER NOT NULL DEFAULT 0,
   response_chars INTEGER NOT NULL DEFAULT 0,
+  details JSONB NOT NULL DEFAULT '{}'::jsonb,
   error_message TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -71,6 +79,8 @@ CREATE INDEX IF NOT EXISTS resumes_user_id_idx ON public.resumes(user_id);
 CREATE INDEX IF NOT EXISTS applications_user_id_idx ON public.applications(user_id);
 CREATE INDEX IF NOT EXISTS applications_resume_id_idx ON public.applications(resume_id);
 CREATE INDEX IF NOT EXISTS applications_status_idx ON public.applications(status);
+CREATE INDEX IF NOT EXISTS applications_job_source_url_idx ON public.applications(job_source_url);
+CREATE INDEX IF NOT EXISTS applications_job_fetched_at_idx ON public.applications(job_fetched_at DESC);
 CREATE INDEX IF NOT EXISTS ai_generation_usage_user_id_created_at_idx
   ON public.ai_generation_usage(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS analytics_events_user_id_created_at_idx

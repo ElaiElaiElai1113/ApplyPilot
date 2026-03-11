@@ -42,6 +42,9 @@ export interface GenerateApplicationResponse {
   quality_flags?: string[]
   keyword_coverage?: number
   used_fallback?: boolean
+  cover_letter_variants?: CoverLetterVariant[]
+  cover_letter_selected_index?: number
+  generation_quality?: GenerationQualityEnvelope
 }
 
 export interface GenerateApplicationInput {
@@ -50,6 +53,55 @@ export interface GenerateApplicationInput {
   jobDescription: string
   resumeContent: string
   templatePack?: string
+  jobSourceUrl?: string
+  jobMetadata?: JobImportMetadata
+  hiringManagerName?: string
+  workModePreference?: string
+  startAvailability?: string
+  valuePropositionBullets?: string[]
+  regenerateCoverLetterOnly?: boolean
+  existingTailoredResume?: string
+}
+
+export interface CoverLetterVariant {
+  id: string
+  label: string
+  content: string
+  score: number
+  reasons: string[]
+}
+
+export interface GenerationQualityEnvelope {
+  used_fallback: boolean
+  quality_flags: string[]
+  keyword_coverage: number
+  proposal_scores: Array<{ id: string; score: number }>
+  risk_level: 'low' | 'medium' | 'high'
+  blocked_by_quality: boolean
+  quality_override_acknowledged?: boolean
+  model_usage?: {
+    proposal_model?: string
+    resume_model?: string
+    proposal_latency_ms?: number
+    resume_latency_ms?: number
+    letter_only?: boolean
+  }
+}
+
+export interface JobImportMetadata {
+  title: string
+  company: string
+  role: string
+  location: string
+  work_mode: string
+  employment_type: string
+  seniority: string
+  salary_text: string
+  required_skills: string[]
+  responsibilities: string[]
+  qualifications: string[]
+  benefits: string[]
+  confidence: Record<string, number>
 }
 
 const MAX_COMPANY_CHARS = 120
@@ -356,6 +408,240 @@ function toStringArray(value: unknown): string[] {
       .filter(Boolean)
   }
   return []
+}
+
+function toReasonableSentenceList(value: string, limit: number): string[] {
+  return value
+    .split(/\n|•|\r|;|\. /)
+    .map((item) => item.replace(/^[-*]\s*/, '').trim())
+    .filter((item) => item.length >= 6)
+    .slice(0, limit)
+}
+
+function normalizeDocumentForGeneration(text: string, maxChars: number): string {
+  const lines = text
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const line of lines) {
+    const key = line.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(line)
+  }
+
+  return deduped.join('\n').slice(0, maxChars).trim()
+}
+
+function stripMetaLeakage(text: string): string {
+  const lines = text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[*#`_]/g, '')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  const blockedPrefixes = [
+    'constraint checklist',
+    'confidence score',
+    'mental sandbox simulation',
+    'draft',
+    'review and edit',
+    'final polish',
+    'checking word count',
+    'the user wants',
+    'role:',
+    'template:',
+    'work mode:',
+    'resume evidence:',
+    'summary',
+    'experience highlights',
+    'skills',
+    'education',
+    'certifications',
+  ]
+
+  const filtered = lines.filter((line) => {
+    const lower = line.toLowerCase()
+    if (blockedPrefixes.some((prefix) => lower.startsWith(prefix))) return false
+    if (lower.includes('no markdown') || lower.includes('output only final letter text')) return false
+    if (lower.includes('analysis/meta instructions')) return false
+    return true
+  })
+
+  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
+function wordCount(text: string): number {
+  return text
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length
+}
+
+function paragraphCount(text: string): number {
+  return text
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean).length
+}
+
+function validateCoverLetterContent(
+  text: string,
+  expectedParagraphs: number,
+  minWords: number,
+  maxWords: number
+): { ok: boolean; reasons: string[] } {
+  const reasons: string[] = []
+  const normalized = stripMetaLeakage(text)
+  const words = wordCount(normalized)
+  const paragraphs = paragraphCount(normalized)
+  const lower = normalized.toLowerCase()
+
+  if (paragraphs !== expectedParagraphs) reasons.push(`paragraph_count_${paragraphs}`)
+  if (words < minWords) reasons.push(`word_count_low_${words}`)
+  if (words > maxWords) reasons.push(`word_count_high_${words}`)
+  if (looksLikeMetaAnalysis(lower)) reasons.push('meta_analysis_leakage')
+  if (lower.includes('constraint checklist') || lower.includes('mental sandbox simulation')) {
+    reasons.push('checklist_leakage')
+  }
+
+  return { ok: reasons.length === 0, reasons }
+}
+
+function sanitizeTailoredResumeOutput(text: string): string {
+  return text
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/\r/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+function buildSafeCoverLetterFallback(params: {
+  company: string
+  role: string
+  facts: string[]
+  paragraphs: 2 | 3
+}): string {
+  const factA = params.facts[0] || 'structured execution and dependable communication'
+  const factB = params.facts[1] || 'workflow organization and detail-oriented delivery'
+
+  if (params.paragraphs === 2) {
+    return [
+      `I am applying for the ${params.role} role at ${params.company}. My background includes ${factA}, and I focus on turning role requirements into clear, reliable outputs that support team priorities.`,
+      `I bring a detail-oriented working style grounded in ${factB}, and I communicate progress consistently while maintaining quality. I would welcome the opportunity to discuss how I can contribute to your team.`,
+    ].join('\n\n')
+  }
+
+  return [
+    `I am applying for the ${params.role} role at ${params.company}. My background includes ${factA}, and I approach execution with a practical, detail-oriented mindset that supports dependable outcomes.`,
+    `In my work, I prioritize clear communication, structured follow-through, and continuous improvement. I focus on translating requirements into concrete deliverables while staying adaptable to changing priorities and team needs.`,
+    `I would value the opportunity to contribute with ${factB} and support your team with consistent, high-quality execution.`,
+  ].join('\n\n')
+}
+
+function parseMonthlyLimit(raw: string | undefined): number {
+  return parseBoundedIntFromEnv(raw, DEFAULT_MONTHLY_LIMIT, 1, 10000)
+}
+
+function clampScore(score: number): number {
+  return Math.max(0, Math.min(100, Math.round(score)))
+}
+
+function buildCoverLetterVariants(params: {
+  concise: string
+  detailed: string
+  facts: string[]
+  missingKeywords: string[]
+}): CoverLetterVariant[] {
+  const { concise, detailed, facts, missingKeywords } = params
+  const base = [
+    { id: 'concise', label: 'Concise', content: concise },
+    { id: 'detailed', label: 'Detailed', content: detailed },
+  ]
+
+  return base.map((variant) => {
+    const lower = variant.content.toLowerCase()
+    let score = 70
+    const reasons: string[] = []
+
+    const factMatches = facts.filter((fact) => lower.includes(fact.toLowerCase().slice(0, 24))).length
+    score += Math.min(15, factMatches * 3)
+    reasons.push(`Fact coverage: ${factMatches}`)
+
+    const missingMentions = missingKeywords.filter((kw) => lower.includes(kw.toLowerCase())).length
+    score += Math.min(10, missingMentions * 2)
+    reasons.push(`Keyword alignment: ${missingMentions}`)
+
+    if (variant.content.length < 220) {
+      score -= 10
+      reasons.push('Too short')
+    } else if (variant.content.length > 2200) {
+      score -= 8
+      reasons.push('Too long')
+    } else {
+      score += 6
+      reasons.push('Length in preferred band')
+    }
+
+    const bannedPhrases = ['as an ai', 'i cannot', 'return only valid json', 'step 1', 'constraints:']
+    const bannedHits = bannedPhrases.filter((phrase) => lower.includes(phrase)).length
+    if (bannedHits > 0) {
+      score -= bannedHits * 12
+      reasons.push('Meta-analysis leakage')
+    }
+
+    const lines = variant.content.split('\n').map((line) => line.trim()).filter(Boolean)
+    const uniqueLines = new Set(lines.map((line) => line.toLowerCase()))
+    const repetitionPenalty = lines.length > 0 ? Math.max(0, lines.length - uniqueLines.size) : 0
+    if (repetitionPenalty > 0) {
+      score -= repetitionPenalty * 3
+      reasons.push('Repetition detected')
+    }
+
+    return {
+      ...variant,
+      score: clampScore(score),
+      reasons,
+    }
+  })
+}
+
+function getRiskLevel(params: {
+  usedFallback: boolean
+  qualityFlags: string[]
+  keywordCoverage: number
+}): 'low' | 'medium' | 'high' {
+  if (params.usedFallback || params.qualityFlags.length >= 3 || params.keywordCoverage < 45) {
+    return 'high'
+  }
+  if (params.qualityFlags.length > 0 || params.keywordCoverage < 65) {
+    return 'medium'
+  }
+  return 'low'
+}
+
+function buildEmptyJobImportMetadata(): JobImportMetadata {
+  return {
+    title: '',
+    company: '',
+    role: '',
+    location: '',
+    work_mode: 'unknown',
+    employment_type: 'unknown',
+    seniority: 'unknown',
+    salary_text: '',
+    required_skills: [],
+    responsibilities: [],
+    qualifications: [],
+    benefits: [],
+    confidence: {},
+  }
 }
 
 function getTemplatePackPrompt(templatePack: string): string {
@@ -726,10 +1012,13 @@ async function callModelForContent(params: {
 }
 
 export interface ExtractJobPostingResponse {
+  sourceUrl: string
+  fetchedAt: string
   role: string
   company: string
   jobDescription: string
-  sourceUrl: string
+  normalizedJobDescription: string
+  metadata: JobImportMetadata
 }
 
 function isPrivateIPv4(ip: string): boolean {
@@ -814,8 +1103,88 @@ function stripHtmlToText(html: string): string {
   return decodeHtmlEntities(stripped).replace(/\r/g, '\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-function pickLikelyJobDescription(text: string): string {
-  const markers = [
+function findFirstMarkerIndex(haystackLower: string, markers: string[]): number {
+  let best = -1
+  for (const marker of markers) {
+    const idx = haystackLower.indexOf(marker)
+    if (idx !== -1 && (best === -1 || idx < best)) {
+      best = idx
+    }
+  }
+  return best
+}
+
+function cleanExtractedJobText(text: string): string {
+  const blockedExact = new Set([
+    'how it works',
+    'pricing',
+    'real results',
+    'post a job',
+    'find jobs',
+    'log in',
+    'sign up',
+    'report',
+    'bookmark note:',
+    'why is this blurred?',
+    'employers',
+    'workers',
+    'other goods',
+    'contact us',
+  ])
+  const blockedContains = [
+    'back to search results',
+    'for privacy and security reasons',
+    'privacy policy',
+    'terms of use',
+    'copyright ©',
+    'view other job posts from',
+    'share this post',
+    'please login or register as jobseeker to apply',
+  ]
+
+  const lines = text
+    .split('\n')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+
+  const filtered: string[] = []
+  for (const line of lines) {
+    const lower = line.toLowerCase()
+    if (blockedExact.has(lower)) continue
+    if (blockedContains.some((token) => lower.includes(token))) continue
+    // Drop short nav-like labels and encoded crumbs.
+    if (line.length <= 3 && /[<>/&;]/.test(line)) continue
+    if (line.length < 26 && /^[A-Z0-9\s/&'".:-]+$/.test(line) && lower !== 'job overview') continue
+    filtered.push(line)
+  }
+
+  const deduped: string[] = []
+  const seen = new Set<string>()
+  for (const line of filtered) {
+    const key = line.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(line)
+  }
+
+  return deduped.join('\n').slice(0, MAX_EXTRACTED_TEXT_CHARS).trim()
+}
+
+function pickLikelyJobDescription(text: string, sourceUrl: string): string {
+  const lower = text.toLowerCase()
+  const hostname = (() => {
+    try {
+      return new URL(sourceUrl).hostname.toLowerCase()
+    } catch {
+      return ''
+    }
+  })()
+
+  const startMarkers = [
+    'job overview',
+    'the opportunity',
+    "what we're looking for",
+    'about us',
     'responsibilities',
     'requirements',
     'qualifications',
@@ -823,22 +1192,175 @@ function pickLikelyJobDescription(text: string): string {
     'job description',
     'what you will do',
   ]
-  const lower = text.toLowerCase()
-  let start = 0
-  for (const marker of markers) {
-    const idx = lower.indexOf(marker)
-    if (idx !== -1) {
-      start = idx
-      break
-    }
+  const endMarkers = [
+    'view other job posts from',
+    'share this post',
+    'bookmark note',
+    'why is this blurred',
+    'for privacy and security reasons',
+    'privacy policy',
+    'terms of use',
+    'copyright ©',
+    'employers',
+    'workers',
+    'contact us',
+  ]
+
+  let start = findFirstMarkerIndex(lower, startMarkers)
+  if (start === -1) start = 0
+
+  let end = lower.length
+  const tail = lower.slice(start)
+  const endInTail = findFirstMarkerIndex(tail, endMarkers)
+  if (endInTail !== -1) {
+    end = start + endInTail
   }
-  return text.slice(start, start + MAX_EXTRACTED_TEXT_CHARS).trim()
+
+  // OnlineJobs pages often include duplicated chrome text before/after content.
+  if (hostname.includes('onlinejobs.ph')) {
+    const onlineStart = findFirstMarkerIndex(lower, ['job overview', 'the opportunity', "what we're looking for"])
+    if (onlineStart !== -1) start = onlineStart
+    const onlineEnd = findFirstMarkerIndex(lower.slice(start), [
+      'view other job posts from',
+      'share this post',
+      'why is this blurred',
+      'employers',
+      'workers',
+      'copyright ©',
+    ])
+    if (onlineEnd !== -1) end = start + onlineEnd
+  }
+
+  const sliced = text.slice(start, Math.min(end, start + MAX_EXTRACTED_TEXT_CHARS))
+  return cleanExtractedJobText(sliced)
 }
 
 function extractTitle(html: string): string {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
   if (!titleMatch) return ''
   return decodeHtmlEntities(titleMatch[1]).replace(/\s+/g, ' ').trim()
+}
+
+function extractMetaTagContent(html: string, attr: 'property' | 'name', value: string): string {
+  const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const regex = new RegExp(
+    `<meta[^>]+${attr}=["']${escaped}["'][^>]+content=["']([^"']+)["'][^>]*>`,
+    'i'
+  )
+  const match = html.match(regex)
+  return match?.[1] ? decodeHtmlEntities(match[1]).trim() : ''
+}
+
+function extractJsonLdBlocks(html: string): Array<Record<string, unknown>> {
+  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) || []
+  const parsed: Array<Record<string, unknown>> = []
+  for (const block of blocks) {
+    const raw = block.replace(/^[\s\S]*?>/, '').replace(/<\/script>$/i, '').trim()
+    try {
+      const value = JSON.parse(raw)
+      if (Array.isArray(value)) {
+        for (const item of value) {
+          if (item && typeof item === 'object') parsed.push(item as Record<string, unknown>)
+        }
+      } else if (value && typeof value === 'object') {
+        parsed.push(value as Record<string, unknown>)
+      }
+    } catch {
+      // Ignore malformed json-ld blocks.
+    }
+  }
+  return parsed
+}
+
+function inferWorkMode(text: string): string {
+  const lower = text.toLowerCase()
+  if (/\bremote\b/.test(lower)) return 'remote'
+  if (/\bhybrid\b/.test(lower)) return 'hybrid'
+  if (/\bon[-\s]?site\b/.test(lower)) return 'onsite'
+  return 'unknown'
+}
+
+function inferEmploymentType(text: string): string {
+  const lower = text.toLowerCase()
+  if (/\bfull[-\s]?time\b/.test(lower)) return 'full-time'
+  if (/\bpart[-\s]?time\b/.test(lower)) return 'part-time'
+  if (/\bcontract\b/.test(lower)) return 'contract'
+  if (/\btemporary\b/.test(lower)) return 'temporary'
+  return 'unknown'
+}
+
+function inferSeniority(text: string): string {
+  const lower = text.toLowerCase()
+  if (/\b(entry|junior)\b/.test(lower)) return 'entry'
+  if (/\b(mid|intermediate)\b/.test(lower)) return 'mid'
+  if (/\b(senior|sr\.)\b/.test(lower)) return 'senior'
+  if (/\b(lead|principal|staff)\b/.test(lower)) return 'lead'
+  return 'unknown'
+}
+
+function buildJobImportMetadata(html: string, plainText: string, title: string): JobImportMetadata {
+  const metadata = buildEmptyJobImportMetadata()
+  const jsonLd = extractJsonLdBlocks(html)
+  const lower = plainText.toLowerCase()
+
+  metadata.title = title || extractMetaTagContent(html, 'property', 'og:title')
+  metadata.location =
+    extractMetaTagContent(html, 'property', 'job:location') ||
+    extractMetaTagContent(html, 'name', 'job_location') ||
+    ''
+  metadata.salary_text =
+    extractMetaTagContent(html, 'name', 'salary') ||
+    extractMetaTagContent(html, 'property', 'job:salary') ||
+    ''
+  metadata.work_mode = inferWorkMode(plainText)
+  metadata.employment_type = inferEmploymentType(plainText)
+  metadata.seniority = inferSeniority(plainText)
+
+  const responsibilitiesSlice = lower.includes('responsibilities')
+    ? plainText.slice(lower.indexOf('responsibilities'), lower.indexOf('requirements') > -1 ? lower.indexOf('requirements') : undefined)
+    : plainText
+  const qualificationsSlice = lower.includes('qualifications')
+    ? plainText.slice(lower.indexOf('qualifications'), lower.indexOf('benefits') > -1 ? lower.indexOf('benefits') : undefined)
+    : plainText
+  const benefitsSlice = lower.includes('benefits')
+    ? plainText.slice(lower.indexOf('benefits'))
+    : plainText
+
+  metadata.responsibilities = toReasonableSentenceList(responsibilitiesSlice, 8)
+  metadata.qualifications = toReasonableSentenceList(qualificationsSlice, 8)
+  metadata.benefits = toReasonableSentenceList(benefitsSlice, 6)
+
+  const skillCandidates = [
+    'excel',
+    'google sheets',
+    'google workspace',
+    'communication',
+    'customer support',
+    'data entry',
+    'crm',
+    'sop',
+    'documentation',
+  ]
+  metadata.required_skills = skillCandidates.filter((candidate) => lower.includes(candidate)).slice(0, 10)
+
+  for (const record of jsonLd) {
+    const hiringOrg = record.hiringOrganization as Record<string, unknown> | undefined
+    const titleFromLd = typeof record.title === 'string' ? record.title.trim() : ''
+    const companyFromLd = typeof hiringOrg?.name === 'string' ? hiringOrg.name.trim() : ''
+    if (titleFromLd && !metadata.title) metadata.title = titleFromLd
+    if (companyFromLd && !metadata.company) metadata.company = companyFromLd
+  }
+
+  metadata.confidence = {
+    title: metadata.title ? 0.85 : 0.3,
+    company: metadata.company ? 0.8 : 0.35,
+    location: metadata.location ? 0.7 : 0.2,
+    responsibilities: metadata.responsibilities.length > 0 ? 0.75 : 0.3,
+    qualifications: metadata.qualifications.length > 0 ? 0.75 : 0.3,
+    required_skills: metadata.required_skills.length > 0 ? 0.7 : 0.25,
+  }
+
+  return metadata
 }
 
 function parseRoleAndCompanyFromTitle(title: string): { role: string; company: string } {
@@ -948,33 +1470,54 @@ export async function extractJobPostingFromUrl(urlInput: string): Promise<Extrac
     const { finalUrl, html } = await fetchWithSafeRedirects(parsed)
     const title = extractTitle(html)
     const text = stripHtmlToText(html)
-    const jobDescription = pickLikelyJobDescription(text)
+    const normalizedJobDescription = pickLikelyJobDescription(text, finalUrl)
 
-    if (!jobDescription || jobDescription.length < 150) {
+    if (!normalizedJobDescription || normalizedJobDescription.length < 150) {
       throw new GenerationError(
         'Could not extract enough job details from this URL. Please paste the job description.',
-        'insufficient_extracted_content'
+        'extraction_parse_low_confidence'
       )
     }
 
     const parsedTitle = parseRoleAndCompanyFromTitle(title)
+    const metadata = buildJobImportMetadata(html, text, title)
+    if (!metadata.company) {
+      metadata.company = parsedTitle.company || ''
+    }
+    if (!metadata.role) {
+      metadata.role = parsedTitle.role || ''
+    }
+    metadata.title = metadata.title || title || parsedTitle.role
+    const fetchedAt = new Date().toISOString()
 
     logEvent('info', 'job_url_extraction_success', {
       user_id: user.id,
       source_url: finalUrl,
-      extracted_length: jobDescription.length,
+      extracted_length: normalizedJobDescription.length,
+      metadata_fields:
+        Object.values(metadata).filter((value) => {
+          if (Array.isArray(value)) return value.length > 0
+          if (value && typeof value === 'object') return Object.keys(value).length > 0
+          return Boolean(value)
+        }).length,
     })
 
-    void trackServerEvent('job_url_import_succeeded', {
+    void trackServerEvent('job_url_import_succeeded_v2', {
       source_url: finalUrl,
-      extracted_length: jobDescription.length,
+      extracted_length: normalizedJobDescription.length,
+      extracted_role: parsedTitle.role,
+      extracted_company: parsedTitle.company,
+      required_skills_count: metadata.required_skills.length,
     })
 
     return {
       sourceUrl: finalUrl,
-      role: parsedTitle.role,
-      company: parsedTitle.company,
-      jobDescription,
+      fetchedAt,
+      role: metadata.role || parsedTitle.role,
+      company: metadata.company || parsedTitle.company,
+      jobDescription: normalizedJobDescription,
+      normalizedJobDescription,
+      metadata,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'unknown'
@@ -1008,6 +1551,14 @@ async function generateApplicationV2(params: {
   jobDescription: string
   resumeContent: string
   templatePack: string
+  jobSourceUrl?: string
+  jobMetadata?: JobImportMetadata
+  hiringManagerName?: string
+  workModePreference?: string
+  startAvailability?: string
+  valuePropositionBullets?: string[]
+  regenerateCoverLetterOnly?: boolean
+  existingTailoredResume?: string
   glmApiUrl: string
   glmApiKey: string
   modelCandidates: string[]
@@ -1023,6 +1574,12 @@ async function generateApplicationV2(params: {
     jobDescription,
     resumeContent,
     templatePack,
+    hiringManagerName,
+    workModePreference,
+    startAvailability,
+    valuePropositionBullets,
+    regenerateCoverLetterOnly,
+    existingTailoredResume,
     glmApiUrl,
     glmApiKey,
     modelCandidates,
@@ -1034,6 +1591,10 @@ async function generateApplicationV2(params: {
 
   const qualityFlags: string[] = []
   let usedFallback = false
+  let proposalModel = ''
+  let resumeModel = ''
+  let proposalLatencyMs = 0
+  let resumeLatencyMs = 0
 
   logEvent('info', 'resume_v2_started', { user_id: userId })
 
@@ -1044,77 +1605,264 @@ async function generateApplicationV2(params: {
   const templatePackPrompt = getTemplatePackPrompt(templatePack)
 
   // Proposal branch (decoupled from resume branch)
-  const proposalPrompt = `Write a concise job application message for this role.
+  const evidenceFacts = tailorPlan.selected_facts.slice(0, 14).map((f) => `- ${f.text}`).join('\n')
+  const valueProps = (valuePropositionBullets ?? []).slice(0, 3).map((item) => `- ${item.trim()}`).filter(Boolean).join('\n')
+  const personalContext = [
+    hiringManagerName ? `- Hiring manager name: ${hiringManagerName}` : '',
+    workModePreference ? `- Work mode preference: ${workModePreference}` : '',
+    startAvailability ? `- Start availability: ${startAvailability}` : '',
+  ].filter(Boolean).join('\n')
+
+  const conciseProposalPrompt = `TASK: Produce Variant A (concise recruiter-friendly cover letter).
+
+ROLE CONTEXT
 - Company: ${company}
 - Role: ${role}
 - Template pack: ${templatePack}
 - Pack guidance: ${templatePackPrompt}
-- Tone: professional, reliable, detail-oriented
-- Constraints: 3 short paragraphs, no markdown, no analysis
-- Must include the word "Precision" in the first line when relevant to the job requirements.
+${personalContext || '- Personal context: none provided'}
+${valueProps ? `- Candidate value propositions:\n${valueProps}` : '- Candidate value propositions: none provided'}
 
-Resume evidence facts:
-${tailorPlan.selected_facts.slice(0, 14).map((f) => `- ${f.text}`).join('\n')}`
+RESUME EVIDENCE (use only these facts + direct inferences)
+${evidenceFacts}
+
+STRICT RULES
+1) Output only the final letter text.
+2) Exactly 2 short paragraphs.
+3) 110-170 words total.
+4) No markdown, no bullet points, no headings, no placeholders.
+5) Do not mention being an AI/model/assistant.
+6) Do not include analysis, checklist, reasoning, or meta instructions.
+7) Do not invent tools, metrics, years, certifications, employers, or outcomes not grounded in evidence.
+8) Keep tone professional, specific, and confident.
+9) If evidence is limited, stay general and truthful rather than fabricate.
+10) Include a clear remote-collaboration signal when relevant.`
+
+  const detailedProposalPrompt = `TASK: Produce Variant B (detailed narrative cover letter).
+
+ROLE CONTEXT
+- Company: ${company}
+- Role: ${role}
+- Template pack: ${templatePack}
+- Pack guidance: ${templatePackPrompt}
+${personalContext || '- Personal context: none provided'}
+${valueProps ? `- Candidate value propositions:\n${valueProps}` : '- Candidate value propositions: none provided'}
+
+RESUME EVIDENCE (use only these facts + direct inferences)
+${evidenceFacts}
+
+STRICT RULES
+1) Output only the final letter text.
+2) Exactly 3 paragraphs.
+3) 180-260 words total.
+4) No markdown, no bullet points, no headings, no placeholders.
+5) Do not mention being an AI/model/assistant.
+6) Do not include analysis, checklist, reasoning, or meta instructions.
+7) Do not invent tools, metrics, years, certifications, employers, or outcomes not grounded in evidence.
+8) Keep narrative concrete: role fit, execution style, and why this company.
+9) If evidence is limited, stay general and truthful rather than fabricate.
+10) End with a concise call-to-action sentence.`
 
   let proposalMessage = ''
+  let conciseProposal = ''
+  let detailedProposal = ''
+  let proposalVariants: CoverLetterVariant[] = []
+  let selectedProposalIndex = 0
+
+  async function repairCoverLetterVariant(raw: string, variantLabel: 'concise' | 'detailed'): Promise<string> {
+    const expectedParagraphs = variantLabel === 'concise' ? 2 : 3
+    const minWords = variantLabel === 'concise' ? 110 : 180
+    const maxWords = variantLabel === 'concise' ? 170 : 260
+    const cleaned = stripMetaLeakage(raw)
+    const check = validateCoverLetterContent(cleaned, expectedParagraphs, minWords, maxWords)
+    if (check.ok) return cleaned
+
+    qualityFlags.push(`proposal_${variantLabel}_repaired`)
+    const repairPrompt = `Rewrite the text below into a clean cover letter.
+
+TEXT TO REWRITE:
+${cleaned}
+
+STRICT OUTPUT RULES:
+1) Output only final letter text.
+2) Exactly ${expectedParagraphs} paragraphs.
+3) ${minWords}-${maxWords} words total.
+4) No markdown, bullets, headings, or analysis text.
+5) Remove any checklist/debug/meta content.
+6) Keep only factual claims grounded in resume evidence and role context.`
+
+    const repaired = await callModelForContent({
+      glmApiUrl,
+      glmApiKey,
+      modelCandidates,
+      aiTimeoutMs,
+      maxOutputTokens: Math.min(900, maxOutputTokens),
+      systemPrompt:
+        'You clean and normalize cover letters for production output. Return only the final letter text.',
+      userPrompt: repairPrompt,
+      userIdForLogs: userId,
+      temperature: 0.1,
+    })
+    const repairedCleaned = stripMetaLeakage(repaired.content)
+    const repairedCheck = validateCoverLetterContent(
+      repairedCleaned,
+      expectedParagraphs,
+      minWords,
+      maxWords
+    )
+    if (!repairedCheck.ok) {
+      qualityFlags.push(`proposal_${variantLabel}_repair_failed`)
+    }
+    return repairedCleaned
+  }
+
   try {
+    const proposalStartedAt = Date.now()
     const proposalResult = await callModelForContent({
       glmApiUrl,
       glmApiKey,
       modelCandidates,
       aiTimeoutMs,
       maxOutputTokens: Math.min(700, maxOutputTokens),
-      systemPrompt: 'You are a professional job application assistant. Return only final message text.',
-      userPrompt: proposalPrompt,
+      systemPrompt:
+        'You are a hiring-ready cover-letter writer. Obey all constraints exactly. Return only final letter text.',
+      userPrompt: conciseProposalPrompt,
       userIdForLogs: userId,
       temperature: 0.35,
     })
-    proposalMessage = proposalResult.content.trim()
-  } catch {
-    qualityFlags.push('proposal_fallback_used')
-    proposalMessage = [
-      `Dear Hiring Manager at ${company},`,
-      `I am applying for the ${role} role. My experience includes structured, detail-oriented work that can be adapted to the priorities outlined for this position.`,
-      `I focus on clear communication, reliable execution, and tailoring my work to the needs of the team and role.`,
-      'Thank you for your consideration.',
-    ].join('\n\n')
-  }
+    proposalModel = proposalResult.model
+    proposalLatencyMs = Date.now() - proposalStartedAt
+    conciseProposal = await repairCoverLetterVariant(proposalResult.content.trim(), 'concise')
 
-  // Resume tailoring branch
-  let tailoredResume = ''
-  try {
-    const rewritePrompt = `${buildResumeRewritePrompt(company, role, jobDescription, tailorPlan)}
-
-Template Pack Guidance:
-${templatePackPrompt}`
-    const rewriteResult = await callModelForContent({
+    const detailedStartedAt = Date.now()
+    const detailedResult = await callModelForContent({
       glmApiUrl,
       glmApiKey,
       modelCandidates,
       aiTimeoutMs,
-      maxOutputTokens: Math.min(800, maxOutputTokens),
+      maxOutputTokens: Math.min(900, maxOutputTokens),
       systemPrompt:
-        'You are an ATS resume rewriter. Only use provided evidence. Return valid JSON only, no commentary.',
-      userPrompt: rewritePrompt,
+        'You are a hiring-ready cover-letter writer. Obey all constraints exactly. Return only final letter text.',
+      userPrompt: detailedProposalPrompt,
       userIdForLogs: userId,
-      temperature: 0.2,
+      temperature: 0.28,
     })
+    if (!proposalModel) proposalModel = detailedResult.model
+    proposalLatencyMs += Date.now() - detailedStartedAt
+    detailedProposal = await repairCoverLetterVariant(detailedResult.content.trim(), 'detailed')
 
-    const rewriteJson = parseLooseJsonObject(rewriteResult.content)
-    const rewriteSchema = validateResumeRewriteSchema(rewriteJson)
-    if (!rewriteSchema) {
-      qualityFlags.push('resume_v2_schema_failed')
-      logEvent('warn', 'resume_v2_schema_failed', { user_id: userId })
-      usedFallback = true
-      tailoredResume = buildDeterministicTailoredResume(tailorPlan, factGraph, resumeTargetMaxChars)
-    } else {
-      tailoredResume = formatAtsOnePageResume(rewriteSchema, factGraph, resumeTargetMaxChars)
-    }
+    proposalVariants = buildCoverLetterVariants({
+      concise: conciseProposal,
+      detailed: detailedProposal,
+      facts: tailorPlan.selected_facts.map((f) => f.text).slice(0, 10),
+      missingKeywords: mapping.missingKeywords,
+    }).sort((a, b) => b.score - a.score)
+    selectedProposalIndex = 0
+    proposalMessage = proposalVariants[0]?.content || conciseProposal
+    void trackServerEvent('cover_letter_variant_generated', {
+      concise_score: proposalVariants.find((v) => v.id === 'concise')?.score ?? 0,
+      detailed_score: proposalVariants.find((v) => v.id === 'detailed')?.score ?? 0,
+    })
   } catch {
+    qualityFlags.push('proposal_fallback_used')
     usedFallback = true
-    qualityFlags.push('resume_v2_fallback_used')
-    logEvent('warn', 'resume_v2_fallback_used', { user_id: userId })
-    tailoredResume = buildDeterministicTailoredResume(tailorPlan, factGraph, resumeTargetMaxChars)
+    void trackServerEvent('cover_letter_variant_generation_failed', {
+      reason: 'proposal_generation_failed',
+      company,
+      role,
+    })
+    conciseProposal = [
+      `Dear Hiring Manager at ${company},`,
+      `I am applying for the ${role} role. My experience includes structured, detail-oriented work that can be adapted to the priorities outlined for this position.`,
+      `I focus on clear communication, reliable execution, and tailoring my work to the needs of the team and role. Thank you for your consideration.`,
+    ].join('\n\n')
+    detailedProposal = [
+      `Dear Hiring Manager at ${company}, I am applying for the ${role} role and bring a practical background in structured execution, documentation, and dependable delivery. I align quickly to role priorities and translate requirements into clear day-to-day outputs.`,
+      `My working style is detail-oriented and process-driven, with consistent communication and follow-through. I focus on maintaining quality while adapting to changing priorities, and I keep claims grounded in real experience rather than inflated statements.`,
+      `I would welcome the opportunity to support your team and contribute to high-quality results for this role.`,
+    ].join('\n\n')
+    proposalVariants = buildCoverLetterVariants({
+      concise: conciseProposal,
+      detailed: detailedProposal,
+      facts: tailorPlan.selected_facts.map((f) => f.text).slice(0, 10),
+      missingKeywords: mapping.missingKeywords,
+    }).sort((a, b) => b.score - a.score)
+    proposalMessage = proposalVariants[0]?.content || conciseProposal
+  }
+
+  // Resume tailoring branch (skip for letter-only regeneration)
+  let tailoredResume = (existingTailoredResume ?? '').trim()
+  if (!regenerateCoverLetterOnly || !tailoredResume) {
+    try {
+      const resumeStartedAt = Date.now()
+      const rewritePrompt = `${buildResumeRewritePrompt(company, role, jobDescription, tailorPlan)}
+
+Template Pack Guidance:
+${templatePackPrompt}`
+      const rewriteResult = await callModelForContent({
+        glmApiUrl,
+        glmApiKey,
+        modelCandidates,
+        aiTimeoutMs,
+        maxOutputTokens: Math.min(800, maxOutputTokens),
+        systemPrompt:
+          'You are an ATS resume rewriter. Use only provided evidence. Return valid JSON only with no prose before or after JSON.',
+        userPrompt: rewritePrompt,
+        userIdForLogs: userId,
+        temperature: 0.2,
+      })
+      resumeModel = rewriteResult.model
+      resumeLatencyMs = Date.now() - resumeStartedAt
+
+      const rewriteJson = parseLooseJsonObject(rewriteResult.content)
+      const rewriteSchema = validateResumeRewriteSchema(rewriteJson)
+      if (!rewriteSchema) {
+        qualityFlags.push('resume_v2_schema_failed')
+        logEvent('warn', 'resume_v2_schema_failed', { user_id: userId })
+        usedFallback = true
+        tailoredResume = buildDeterministicTailoredResume(tailorPlan, factGraph, resumeTargetMaxChars)
+      } else {
+        tailoredResume = formatAtsOnePageResume(rewriteSchema, factGraph, resumeTargetMaxChars)
+      }
+    } catch {
+      usedFallback = true
+      qualityFlags.push('resume_v2_fallback_used')
+      logEvent('warn', 'resume_v2_fallback_used', { user_id: userId })
+      tailoredResume = buildDeterministicTailoredResume(tailorPlan, factGraph, resumeTargetMaxChars)
+    }
+  }
+  tailoredResume = sanitizeTailoredResumeOutput(tailoredResume)
+
+  proposalVariants = proposalVariants.map((variant) => ({
+    ...variant,
+    content: stripMetaLeakage(variant.content),
+  }))
+  proposalMessage = stripMetaLeakage(proposalMessage)
+  const conciseCheck = validateCoverLetterContent(
+    proposalVariants.find((variant) => variant.id === 'concise')?.content || conciseProposal,
+    2,
+    110,
+    170
+  )
+  const detailedCheck = validateCoverLetterContent(
+    proposalVariants.find((variant) => variant.id === 'detailed')?.content || detailedProposal,
+    3,
+    180,
+    260
+  )
+  if (!conciseCheck.ok || !detailedCheck.ok) {
+    qualityFlags.push('proposal_validation_failed')
+    const facts = tailorPlan.selected_facts.map((fact) => fact.text).slice(0, 8)
+    const safeConcise = buildSafeCoverLetterFallback({ company, role, facts, paragraphs: 2 })
+    const safeDetailed = buildSafeCoverLetterFallback({ company, role, facts, paragraphs: 3 })
+    proposalVariants = buildCoverLetterVariants({
+      concise: safeConcise,
+      detailed: safeDetailed,
+      facts,
+      missingKeywords: mapping.missingKeywords,
+    }).sort((a, b) => b.score - a.score)
+    proposalMessage = proposalVariants[0]?.content || safeConcise
+    usedFallback = true
   }
 
   const noInventViolations = strictNoInvent ? validateNoInventedClaims(tailoredResume, factGraph) : []
@@ -1159,6 +1907,40 @@ ${templatePackPrompt}`
     missingKeywords: mapping.missingKeywords,
     matched: mapping.matched,
   })
+  const riskLevel = getRiskLevel({
+    usedFallback,
+    qualityFlags,
+    keywordCoverage: mapping.keywordCoverage,
+  })
+  const generationQuality: GenerationQualityEnvelope = {
+    used_fallback: usedFallback,
+    quality_flags: Array.from(new Set(qualityFlags)),
+    keyword_coverage: mapping.keywordCoverage,
+    proposal_scores: proposalVariants.map((variant) => ({ id: variant.id, score: variant.score })),
+    risk_level: riskLevel,
+    blocked_by_quality: riskLevel !== 'low',
+    model_usage: {
+      proposal_model: proposalModel || undefined,
+      resume_model: resumeModel || undefined,
+      proposal_latency_ms: proposalLatencyMs,
+      resume_latency_ms: resumeLatencyMs,
+      letter_only: Boolean(regenerateCoverLetterOnly),
+    },
+  }
+  if (riskLevel !== 'low') {
+    void trackServerEvent('generation_quality_gate_triggered', {
+      risk_level: riskLevel,
+      quality_flags: generationQuality.quality_flags.slice(0, 10),
+      keyword_coverage: generationQuality.keyword_coverage,
+    })
+  }
+  const enrichedTruthLock = [
+    ...truthLock,
+    {
+      claim: 'generation_meta',
+      evidence: `proposal_model=${proposalModel || 'unknown'};resume_model=${resumeModel || 'cached'};proposal_latency_ms=${proposalLatencyMs};resume_latency_ms=${resumeLatencyMs};letter_only=${Boolean(regenerateCoverLetterOnly)}`,
+    },
+  ]
 
   return {
     proposal_message: proposalMessage,
@@ -1167,11 +1949,14 @@ ${templatePackPrompt}`
     missing_keywords: mapping.missingKeywords.slice(0, 20),
     interview_questions: interviewQuestions,
     confidence_insights: confidenceInsights,
-    truth_lock: truthLock,
+    truth_lock: enrichedTruthLock,
     interview_bridge: interviewBridge,
-    quality_flags: Array.from(new Set(qualityFlags)),
+    quality_flags: generationQuality.quality_flags,
     keyword_coverage: mapping.keywordCoverage,
     used_fallback: usedFallback,
+    cover_letter_variants: proposalVariants,
+    cover_letter_selected_index: selectedProposalIndex,
+    generation_quality: generationQuality,
   }
 }
 
@@ -1204,8 +1989,8 @@ export async function generateApplication(
 
   const company = input.company.trim().slice(0, MAX_COMPANY_CHARS)
   const role = input.role.trim().slice(0, MAX_ROLE_CHARS)
-  const jobDescription = input.jobDescription.trim().slice(0, MAX_JOB_DESCRIPTION_CHARS)
-  const resumeContent = input.resumeContent.trim().slice(0, MAX_RESUME_CHARS)
+  const jobDescription = normalizeDocumentForGeneration(input.jobDescription, MAX_JOB_DESCRIPTION_CHARS)
+  const resumeContent = normalizeDocumentForGeneration(input.resumeContent, MAX_RESUME_CHARS)
   const templatePack = (input.templatePack || DEFAULT_TEMPLATE_PACK).trim() || DEFAULT_TEMPLATE_PACK
 
   if (!company || !role || !jobDescription || !resumeContent) {
@@ -1229,7 +2014,7 @@ export async function generateApplication(
     400,
     2500
   )
-  const resumePipelineV2Enabled = parseBooleanFromEnv(process.env.RESUME_PIPELINE_V2, true)
+  const genV2OnlyEnabled = parseBooleanFromEnv(process.env.GEN_V2_ONLY, true)
   const resumeStrictNoInvent = parseBooleanFromEnv(process.env.RESUME_STRICT_NO_INVENT, true)
   const resumeTargetMaxChars = parseBoundedIntFromEnv(
     process.env.RESUME_TARGET_MAX_CHARS,
@@ -1237,7 +2022,6 @@ export async function generateApplication(
     1800,
     12000
   )
-  const resumePipelineShadow = parseBooleanFromEnv(process.env.RESUME_PIPELINE_V2_SHADOW, false)
 
   if (!glmApiUrl || !glmApiKey) {
     throw new GenerationError(
@@ -1248,10 +2032,7 @@ export async function generateApplication(
 
   const now = new Date()
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
-  const monthlyLimit = Number.parseInt(
-    process.env.GENERATION_MONTHLY_LIMIT ?? `${DEFAULT_MONTHLY_LIMIT}`,
-    10
-  )
+  const monthlyLimit = parseMonthlyLimit(process.env.GENERATION_MONTHLY_LIMIT)
 
   const { count: monthlyGenerations, error: usageReadError } = await supabase
     .from('ai_generation_usage')
@@ -1274,7 +2055,12 @@ export async function generateApplication(
     )
   }
 
-  if (resumePipelineV2Enabled || resumePipelineShadow) {
+  if (!genV2OnlyEnabled) {
+    throw new GenerationError('Only V2 generation is enabled in this environment.', 'v2_only_required')
+  }
+
+  try {
+    const startedAt = Date.now()
     const v2Result = await generateApplicationV2({
       userId: user.id,
       company,
@@ -1282,6 +2068,14 @@ export async function generateApplication(
       jobDescription,
       resumeContent,
       templatePack,
+      jobSourceUrl: input.jobSourceUrl,
+      jobMetadata: input.jobMetadata,
+      hiringManagerName: input.hiringManagerName,
+      workModePreference: input.workModePreference,
+      startAvailability: input.startAvailability,
+      valuePropositionBullets: input.valuePropositionBullets,
+      regenerateCoverLetterOnly: input.regenerateCoverLetterOnly,
+      existingTailoredResume: input.existingTailoredResume,
       glmApiUrl,
       glmApiKey,
       modelCandidates,
@@ -1291,275 +2085,47 @@ export async function generateApplication(
       resumeTargetMaxChars,
     })
 
-    if (resumePipelineV2Enabled && !resumePipelineShadow) {
-      await supabase.from('ai_generation_usage').insert({
-        user_id: user.id,
-        model: `${modelCandidates[0]}:resume_v2`,
-        status: 'success',
-        prompt_chars:
-          company.length + role.length + jobDescription.length + resumeContent.length,
-        response_chars: (v2Result.proposal_message.length + v2Result.tailored_resume.length),
-      })
-      return v2Result
-    }
-  }
-
-  const prompt = `You are an expert job application assistant. Analyze the following resume and job description to create a tailored application package.
-
-Resume:
-${resumeContent}
-
-Job Details:
-- Company: ${company}
-- Role: ${role}
-- Job Description: ${jobDescription}
-
-	Please provide a JSON response with the following structure:
-	{
-	  "proposal_message": "A compelling cover letter/proposal message (3-4 paragraphs)",
-	  "tailored_resume": "An optimized version of the resume tailored for this specific role, highlighting relevant experience and skills",
-	  "match_score": "A number between 0-100 indicating how well the resume matches the job requirements",
-	  "missing_keywords": "Array of important keywords from the job description that are missing or underemphasized in the resume",
-	  "interview_questions": "Array of 5-8 likely interview questions based on the job requirements and resume",
-	  "confidence_insights": [{"requirement":"", "evidence":"", "action":""}],
-	  "truth_lock": [{"claim":"", "evidence":""}],
-	  "interview_bridge": [{"question":"", "focus_area":"", "reason":""}]
-	}
-
-Important guidelines:
-- The proposal should be professional, enthusiastic, and demonstrate understanding of the company and role
-- The tailored resume should maintain the original structure but optimize bullet points and descriptions
-	- The match score should be realistic and based on actual skill alignment
-	- Missing keywords should be specific and actionable
-	- Interview questions should be relevant and challenging
-	- Template pack to bias toward: ${templatePack}
-	- Return ONLY valid JSON, no additional text`
-
-  try {
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), aiTimeoutMs)
-
-    const payloadBase = {
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a professional job application assistant that always responds with valid JSON.',
-        },
-        {
-          role: 'user',
-          content: prompt,
-        },
-      ],
-      temperature: 0.4,
-      max_tokens: maxOutputTokens,
-    }
-    let response: Response | null = null
-    let selectedModel = modelCandidates[0]
-    let selectedModelIndex = 0
-    let retryCountForCurrentModel = 0
-    let lastErrorBody = ''
-    let lastErrorStatus = 0
-    let seenModelNotFound = false
-
-    try {
-      const maxAttempts = modelCandidates.length * (AI_MAX_RETRIES + 1)
-      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-        response = await fetch(glmApiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${glmApiKey}`,
-          },
-          body: JSON.stringify({
-            ...payloadBase,
-            model: selectedModel,
-          }),
-          signal: controller.signal,
-        })
-
-        if (response.ok) {
-          break
-        }
-
-        const errorBody = await response.text()
-        lastErrorBody = errorBody
-        lastErrorStatus = response.status
-        seenModelNotFound = seenModelNotFound || isModelNotFoundError(response.status, errorBody)
-
-        if (
-          isModelNotFoundError(response.status, errorBody) &&
-          selectedModelIndex < modelCandidates.length - 1
-        ) {
-          selectedModelIndex += 1
-          selectedModel = modelCandidates[selectedModelIndex]
-          retryCountForCurrentModel = 0
-          continue
-        }
-
-        const canRetryOnSameModel =
-          (response.status === 429 || response.status >= 500) &&
-          retryCountForCurrentModel < AI_MAX_RETRIES
-
-        if (!canRetryOnSameModel) {
-          // On transient upstream failures, try the next model before failing.
-          if (selectedModelIndex < modelCandidates.length - 1) {
-            selectedModelIndex += 1
-            selectedModel = modelCandidates[selectedModelIndex]
-            retryCountForCurrentModel = 0
-            continue
-          }
-          break
-        }
-
-        const retryAfterMs = getRetryAfterMs(response)
-        const backoffMs =
-          retryAfterMs ??
-          AI_RETRY_BASE_DELAY_MS * 2 ** retryCountForCurrentModel +
-            Math.floor(Math.random() * 400)
-        retryCountForCurrentModel += 1
-        await sleep(backoffMs)
-      }
-
-      if ((!response || !response.ok) && seenModelNotFound) {
-        const discoveredModel = await discoverProviderModel(glmApiUrl, glmApiKey)
-        if (discoveredModel && !modelCandidates.includes(discoveredModel)) {
-          selectedModel = discoveredModel
-          response = await fetch(glmApiUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${glmApiKey}`,
-            },
-            body: JSON.stringify({
-              ...payloadBase,
-              model: selectedModel,
-            }),
-            signal: controller.signal,
-          })
-
-          if (!response.ok) {
-            lastErrorBody = await response.text()
-            lastErrorStatus = response.status
-          }
-        }
-      }
-    } finally {
-      clearTimeout(timeout)
-    }
-
-    if (!response) {
-      throw new GenerationError('AI provider did not return a response.', 'provider_no_response')
-    }
-
-    if (!response.ok) {
-      const errorBody = lastErrorBody || (await response.text())
-      const status = lastErrorStatus || response.status
-      const mapped = describeProviderFailure(status, errorBody)
-      const isMissingModelCode = isModelNotFoundError(status, errorBody)
-      logEvent('error', 'ai_provider_error', {
-        status,
-        user_id: user.id,
-        reason_code: mapped.code,
-        model: selectedModel,
-      })
-      console.error('GLM API Error:', {
-        status,
-        code: mapped.code,
-        model: selectedModel,
-        body: errorBody.slice(0, 500),
-        tried_models: modelCandidates,
-      })
-      if (isMissingModelCode) {
-        throw new GenerationError(
-          'No compatible GLM model was found for this API key. Set GLM_MODELS to models available on your account.',
-          'provider_model_unavailable'
-        )
-      }
-      throw new GenerationError(mapped.message, mapped.code)
-    }
-
-    const data = await response.json()
-    const content = extractProviderContent(data)
-
-    if (!content) {
-      logEvent('warn', 'ai_empty_response_payload', {
-        user_id: user.id,
-        model: selectedModel,
-      })
-      console.warn('GLM empty content payload preview:', JSON.stringify(data).slice(0, 800))
-      throw new GenerationError('AI response was empty. Please try again.', 'empty_response')
-    }
-
-    const jsonResponse = parseLooseJsonObject(content)
-    const parsedProposal =
-      jsonResponse && typeof jsonResponse.proposal_message === 'string'
-        ? jsonResponse.proposal_message
-        : ''
-    const shouldUseFallback = !jsonResponse || looksLikeMetaAnalysis(parsedProposal)
-
-    if (shouldUseFallback) {
-      logEvent('warn', 'ai_non_json_response_fallback', {
-        user_id: user.id,
-        model: selectedModel,
-      })
-    }
-	    const parsedResult = !shouldUseFallback && jsonResponse
-	      ? {
-          proposal_message: parsedProposal,
-          tailored_resume:
-            typeof jsonResponse.tailored_resume === 'string'
-              ? jsonResponse.tailored_resume
-              : '',
-          match_score:
-            typeof jsonResponse.match_score === 'number' ||
-            typeof jsonResponse.match_score === 'string'
-              ? Number(jsonResponse.match_score)
-              : 0,
-	          missing_keywords: toStringArray(jsonResponse.missing_keywords),
-	          interview_questions: toStringArray(jsonResponse.interview_questions),
-	          confidence_insights: Array.isArray(jsonResponse.confidence_insights)
-	            ? jsonResponse.confidence_insights
-	            : [],
-	          truth_lock: Array.isArray(jsonResponse.truth_lock)
-	            ? jsonResponse.truth_lock
-	            : [],
-	          interview_bridge: Array.isArray(jsonResponse.interview_bridge)
-	            ? jsonResponse.interview_bridge
-	            : [],
-	        }
-      : buildStructuredFallback(content, resumeContent, company, role, jobDescription, templatePack)
-
     await supabase.from('ai_generation_usage').insert({
       user_id: user.id,
-      model: selectedModel,
+      model: `${modelCandidates[0]}:proposal+resume_v2`,
       status: 'success',
-      prompt_chars: prompt.length,
-      response_chars: content.length,
+      prompt_chars:
+        company.length + role.length + jobDescription.length + resumeContent.length,
+      response_chars: v2Result.proposal_message.length + v2Result.tailored_resume.length,
+      details: {
+        generation_version: 'v2',
+        regenerate_cover_letter_only: Boolean(input.regenerateCoverLetterOnly),
+        used_fallback: Boolean(v2Result.generation_quality?.used_fallback),
+        quality_flags: v2Result.generation_quality?.quality_flags ?? [],
+        keyword_coverage: v2Result.generation_quality?.keyword_coverage ?? 0,
+        risk_level: v2Result.generation_quality?.risk_level ?? 'low',
+        model_usage: v2Result.generation_quality?.model_usage ?? {},
+      },
     })
-    logEvent('info', 'generation_success', {
+    void trackServerEvent(input.regenerateCoverLetterOnly ? 'cover_letter_regenerated_only' : 'generation_succeeded_v2', {
+      latency_ms: Date.now() - startedAt,
+      template_pack: templatePack,
+      keyword_coverage: v2Result.generation_quality?.keyword_coverage ?? 0,
+      risk_level: v2Result.generation_quality?.risk_level ?? 'low',
+    })
+    logEvent('info', 'generation_v2_success', {
       user_id: user.id,
-      model: selectedModel,
-      prompt_chars: prompt.length,
-      response_chars: content.length,
+      model: modelCandidates[0],
+      prompt_chars: company.length + role.length + jobDescription.length + resumeContent.length,
+      response_chars: v2Result.proposal_message.length + v2Result.tailored_resume.length,
     })
-
-    return {
-      proposal_message: parsedResult.proposal_message || '',
-      tailored_resume: parsedResult.tailored_resume || resumeContent,
-      match_score: Math.min(100, Math.max(0, Number(parsedResult.match_score) || 0)),
-      missing_keywords: parsedResult.missing_keywords.slice(0, 20),
-      interview_questions: parsedResult.interview_questions.slice(0, 10),
-      confidence_insights: parsedResult.confidence_insights || [],
-      truth_lock: parsedResult.truth_lock || [],
-      interview_bridge: parsedResult.interview_bridge || [],
-    }
+    return v2Result
   } catch (error) {
     await supabase.from('ai_generation_usage').insert({
       user_id: user.id,
-      model: primaryModel,
+      model: `${modelCandidates[0]}:proposal+resume_v2`,
       status: 'failed',
       prompt_chars:
         company.length + role.length + jobDescription.length + resumeContent.length,
+      details: {
+        generation_version: 'v2',
+        regenerate_cover_letter_only: Boolean(input.regenerateCoverLetterOnly),
+      },
       error_message: error instanceof Error ? error.message.slice(0, 500) : 'unknown_error',
     })
     logEvent('error', 'generation_failed', {
@@ -1583,7 +2149,7 @@ Important guidelines:
       throw error
     }
 
-    console.error('Generation error:', error)
+    console.error('Generation v2 error:', error)
     throw new GenerationError('Generation failed. Please try again.', 'unknown')
   }
 }

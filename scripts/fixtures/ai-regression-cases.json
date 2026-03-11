@@ -1,0 +1,42 @@
+[
+  {
+    "id": "clean_variant_b",
+    "shouldPass": true,
+    "type": "cover_letter",
+    "expectedParagraphs": 3,
+    "minWords": 130,
+    "maxWords": 260,
+    "shouldContain": ["applying", "team"],
+    "shouldNotContain": ["constraint checklist", "mental sandbox simulation", "as an ai"],
+    "text": "I am applying for this role because my background in software execution, process discipline, and communication aligns with your priorities. I have experience building and refining production-ready workflows, and I focus on turning requirements into reliable deliverables with clear ownership. I work with a structured approach, communicate updates early, and keep quality high as tasks evolve.\n\nIn past projects, I have supported product delivery by improving system stability, documenting repeatable processes, and reducing friction in handoffs between teams. I am comfortable balancing speed and quality, and I adapt quickly when priorities change. I stay grounded in real experience and focus on outcomes that are measurable and useful for the business.\n\nI am interested in contributing to a team that values practical execution, thoughtful problem solving, and consistent follow-through. I would welcome the opportunity to discuss how I can help your team deliver dependable results."
+  },
+  {
+    "id": "leaked_checklist",
+    "shouldPass": false,
+    "type": "cover_letter",
+    "expectedParagraphs": 3,
+    "minWords": 180,
+    "maxWords": 260,
+    "shouldContain": [],
+    "shouldNotContain": ["constraint checklist", "mental sandbox simulation", "step 1"],
+    "text": "Constraint Checklist: yes. Mental Sandbox Simulation: yes.\n\nI am applying for the role and can support your team.\n\nStep 1: analyze request."
+  },
+  {
+    "id": "too_short_variant_a",
+    "shouldPass": false,
+    "type": "cover_letter",
+    "expectedParagraphs": 2,
+    "minWords": 110,
+    "maxWords": 170,
+    "shouldContain": [],
+    "shouldNotContain": ["return only valid json"],
+    "text": "I am applying for the role.\n\nThank you."
+  },
+  {
+    "id": "resume_meta_noise",
+    "shouldPass": true,
+    "type": "resume",
+    "shouldNotContain": ["```", "return only valid json"],
+    "text": "```json\n{ \"name\": \"Candidate\" }\n```\n\nExperience\n- Built automation workflows"
+  }
+]

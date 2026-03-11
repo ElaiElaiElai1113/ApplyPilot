@@ -75,6 +75,13 @@ export interface Database {
           missing_keywords: string[]
           interview_questions: string[]
           template_pack: string | null
+          job_source_url: string | null
+          job_fetched_at: string | null
+          job_metadata: Json
+          cover_letter_variants: Json
+          cover_letter_selected_index: number
+          generation_quality: Json
+          generation_version: string
           confidence_insights: Json
           truth_lock: Json
           interview_bridge: Json
@@ -97,6 +104,13 @@ export interface Database {
           missing_keywords: string[]
           interview_questions: string[]
           template_pack?: string | null
+          job_source_url?: string | null
+          job_fetched_at?: string | null
+          job_metadata?: Json
+          cover_letter_variants?: Json
+          cover_letter_selected_index?: number
+          generation_quality?: Json
+          generation_version?: string
           confidence_insights?: Json
           truth_lock?: Json
           interview_bridge?: Json
@@ -119,6 +133,13 @@ export interface Database {
           missing_keywords?: string[]
           interview_questions?: string[]
           template_pack?: string | null
+          job_source_url?: string | null
+          job_fetched_at?: string | null
+          job_metadata?: Json
+          cover_letter_variants?: Json
+          cover_letter_selected_index?: number
+          generation_quality?: Json
+          generation_version?: string
           confidence_insights?: Json
           truth_lock?: Json
           interview_bridge?: Json
@@ -137,6 +158,7 @@ export interface Database {
           status: 'success' | 'failed'
           prompt_chars: number
           response_chars: number
+          details: Json
           error_message: string | null
           created_at: string
         }
@@ -147,6 +169,7 @@ export interface Database {
           status: 'success' | 'failed'
           prompt_chars?: number
           response_chars?: number
+          details?: Json
           error_message?: string | null
           created_at?: string
         }
@@ -157,6 +180,7 @@ export interface Database {
           status?: 'success' | 'failed'
           prompt_chars?: number
           response_chars?: number
+          details?: Json
           error_message?: string | null
           created_at?: string
         }
@@ -218,4 +242,45 @@ export interface InterviewBridgeItem {
   question: string
   focus_area: string
   reason: string
+}
+
+export interface CoverLetterVariant {
+  id: string
+  label: string
+  content: string
+  score: number
+  reasons: string[]
+}
+
+export interface GenerationQuality {
+  used_fallback: boolean
+  quality_flags: string[]
+  keyword_coverage: number
+  proposal_scores: Array<{ id: string; score: number }>
+  risk_level: 'low' | 'medium' | 'high'
+  blocked_by_quality: boolean
+  quality_override_acknowledged?: boolean
+  model_usage?: {
+    proposal_model?: string
+    resume_model?: string
+    proposal_latency_ms?: number
+    resume_latency_ms?: number
+    letter_only?: boolean
+  }
+}
+
+export interface JobImportMetadata {
+  title: string
+  company: string
+  role: string
+  location: string
+  work_mode: string
+  employment_type: string
+  seniority: string
+  salary_text: string
+  required_skills: string[]
+  responsibilities: string[]
+  qualifications: string[]
+  benefits: string[]
+  confidence: Record<string, number>
 }

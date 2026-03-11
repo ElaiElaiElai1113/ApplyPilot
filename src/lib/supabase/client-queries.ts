@@ -5,7 +5,10 @@ import type {
   Resume,
   Application,
   ConfidenceInsight,
+  CoverLetterVariant,
+  GenerationQuality,
   InterviewBridgeItem,
+  JobImportMetadata,
   TruthLockItem,
 } from '@/types/database'
 import type { User } from '@supabase/supabase-js'
@@ -77,7 +80,7 @@ export async function getClientApplications(userId: string): Promise<Application
   const supabase = createBrowserSupabaseClient()
   const { data, error } = await supabase
     .from('applications')
-    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,template_pack,confidence_insights,truth_lock,interview_bridge,next_follow_up_at,last_status_changed_at,status,created_at,updated_at')
+    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,template_pack,job_source_url,job_fetched_at,job_metadata,cover_letter_variants,cover_letter_selected_index,generation_quality,generation_version,confidence_insights,truth_lock,interview_bridge,next_follow_up_at,last_status_changed_at,status,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
@@ -107,7 +110,7 @@ export async function getClientDashboardStats(userId: string) {
   // Get recent applications
   const { data: recentApps, error: recentError } = await supabase
     .from('applications')
-    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,template_pack,confidence_insights,truth_lock,interview_bridge,next_follow_up_at,last_status_changed_at,status,created_at,updated_at')
+    .select('id,user_id,resume_id,company,role,job_description,proposal,tailored_resume,match_score,missing_keywords,interview_questions,template_pack,job_source_url,job_fetched_at,job_metadata,cover_letter_variants,cover_letter_selected_index,generation_quality,generation_version,confidence_insights,truth_lock,interview_bridge,next_follow_up_at,last_status_changed_at,status,created_at,updated_at')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(5)
@@ -179,6 +182,12 @@ export async function createClientApplication(
   missingKeywords: string[],
   interviewQuestions: string[],
   templatePack: string | null,
+  jobSourceUrl: string | null,
+  jobFetchedAt: string | null,
+  jobMetadata: JobImportMetadata | null,
+  coverLetterVariants: CoverLetterVariant[],
+  coverLetterSelectedIndex: number,
+  generationQuality: GenerationQuality,
   confidenceInsights: ConfidenceInsight[],
   truthLock: TruthLockItem[],
   interviewBridge: InterviewBridgeItem[]
@@ -198,6 +207,13 @@ export async function createClientApplication(
       missing_keywords: missingKeywords,
       interview_questions: interviewQuestions,
       template_pack: templatePack,
+      job_source_url: jobSourceUrl,
+      job_fetched_at: jobFetchedAt,
+      job_metadata: jobMetadata ?? {},
+      cover_letter_variants: coverLetterVariants,
+      cover_letter_selected_index: coverLetterSelectedIndex,
+      generation_quality: generationQuality,
+      generation_version: 'v2',
       confidence_insights: confidenceInsights,
       truth_lock: truthLock,
       interview_bridge: interviewBridge,
@@ -224,6 +240,13 @@ export async function createClientApplication(
         missing_keywords: missingKeywords,
         interview_questions: interviewQuestions,
         template_pack: templatePack,
+        job_source_url: jobSourceUrl,
+        job_fetched_at: jobFetchedAt,
+        job_metadata: jobMetadata ?? {},
+        cover_letter_variants: coverLetterVariants,
+        cover_letter_selected_index: coverLetterSelectedIndex,
+        generation_quality: generationQuality,
+        generation_version: 'v2',
         confidence_insights: confidenceInsights,
         truth_lock: truthLock,
         interview_bridge: interviewBridge,

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Check, Clock3, Eye, Loader2, Search, Trash2 } from 'lucide-react'
+import { FullContentModal } from '@/components/full-content-modal'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -19,7 +20,13 @@ import {
 } from '@/lib/supabase/client-queries'
 import { formatDate } from '@/lib/utils'
 import { trackClientEvent } from '@/lib/analytics/client'
-import type { Application, ConfidenceInsight, InterviewBridgeItem, TruthLockItem } from '@/types/database'
+import type {
+  Application,
+  ConfidenceInsight,
+  CoverLetterVariant,
+  InterviewBridgeItem,
+  TruthLockItem,
+} from '@/types/database'
 
 type StatusFilter = 'all' | Application['status']
 
@@ -43,6 +50,10 @@ function asInterviewBridge(value: Application['interview_bridge']): InterviewBri
   return Array.isArray(value) ? (value as unknown as InterviewBridgeItem[]) : []
 }
 
+function asCoverLetterVariants(value: Application['cover_letter_variants']): CoverLetterVariant[] {
+  return Array.isArray(value) ? (value as unknown as CoverLetterVariant[]) : []
+}
+
 export default function TrackerPage() {
   const { toast } = useToast()
   const [applications, setApplications] = useState<Application[]>([])
@@ -55,6 +66,7 @@ export default function TrackerPage() {
   const [isUpdating, setIsUpdating] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
   const [celebratingId, setCelebratingId] = useState<string | null>(null)
+  const [fullViewType, setFullViewType] = useState<'letter' | 'resume' | null>(null)
 
   const loadApplications = useCallback(async () => {
     try {
@@ -136,6 +148,7 @@ export default function TrackerPage() {
   }
 
   return (
+    <>
     <div className="space-y-6 p-6 md:p-8">
       <motion.section
         initial={{ opacity: 0, y: 20 }}
@@ -334,11 +347,39 @@ export default function TrackerPage() {
                   <TabsTrigger value="truth" className="rounded-full">Truth Lock</TabsTrigger>
                   <TabsTrigger value="prep" className="rounded-full">Prep</TabsTrigger>
                 </TabsList>
-                <TabsContent value="letter" className="mt-5 whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
-                  {selectedApplication.proposal}
+                <TabsContent value="letter" className="mt-5 space-y-3">
+                  <div className="flex justify-end">
+                    <Button
+                      variant="ghost"
+                      className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
+                      onClick={() => {
+                        setFullViewType('letter')
+                        void trackClientEvent('full_view_opened', { type: 'letter', surface: 'tracker' })
+                      }}
+                    >
+                      View full letter
+                    </Button>
+                  </div>
+                  <div className="whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
+                    {selectedApplication.proposal}
+                  </div>
                 </TabsContent>
-                <TabsContent value="resume" className="mt-5 whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
-                  {selectedApplication.tailored_resume}
+                <TabsContent value="resume" className="mt-5 space-y-3">
+                  <div className="flex justify-end">
+                    <Button
+                      variant="ghost"
+                      className="rounded-full border border-[#e2d6cb] bg-white/90 text-[#6d5b4f] hover:bg-[#f7f1ea]"
+                      onClick={() => {
+                        setFullViewType('resume')
+                        void trackClientEvent('full_view_opened', { type: 'resume', surface: 'tracker' })
+                      }}
+                    >
+                      View full resume
+                    </Button>
+                  </div>
+                  <div className="whitespace-pre-wrap rounded-[1.8rem] bg-[#fff9f3] p-5 text-sm leading-8 text-[#66564a]">
+                    {selectedApplication.tailored_resume}
+                  </div>
                 </TabsContent>
                 <TabsContent value="confidence" className="mt-5 space-y-3 rounded-[1.8rem] bg-[#fff9f3] p-5">
                   {asConfidenceInsights(selectedApplication.confidence_insights).map((item) => (
@@ -398,5 +439,26 @@ export default function TrackerPage() {
         </DialogContent>
       </Dialog>
     </div>
+    <FullContentModal
+      title="Tailored Cover Letter"
+      content={
+        selectedApplication
+          ? asCoverLetterVariants(selectedApplication.cover_letter_variants)[
+              Math.max(0, selectedApplication.cover_letter_selected_index || 0)
+            ]?.content || selectedApplication.proposal
+          : ''
+      }
+      fileName={`${selectedApplication?.company || 'application'}-${selectedApplication?.role || 'role'}-cover-letter`}
+      open={fullViewType === 'letter'}
+      onOpenChange={(open) => setFullViewType(open ? 'letter' : null)}
+    />
+    <FullContentModal
+      title="Tailored Resume"
+      content={selectedApplication?.tailored_resume || ''}
+      fileName={`${selectedApplication?.company || 'application'}-${selectedApplication?.role || 'role'}-tailored-resume`}
+      open={fullViewType === 'resume'}
+      onOpenChange={(open) => setFullViewType(open ? 'resume' : null)}
+    />
+    </>
   )
 }
