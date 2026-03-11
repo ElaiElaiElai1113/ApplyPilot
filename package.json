@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test:smoke": "npm run lint && npm run typecheck && npm run build",
     "test:ai-regression": "node scripts/ai-regression-eval.mjs",
-    "test:e2e": "npx playwright test",
+    "test:e2e": "playwright test",
     "db:push": "supabase db push",
     "db:types": "supabase gen types typescript --local"
   },
@@ -41,6 +41,7 @@
     "zustand": "^5.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/node": "^22.8.6",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

@@ -22,6 +22,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: AI Regression Gate
+        run: npm run test:ai-regression
+
       - name: Smoke Validation
         run: npm run test:smoke
 
@@ -43,7 +46,7 @@ jobs:
         run: npm ci
 
       - name: Install Playwright Browsers
-        run: npx playwright install --with-deps chromium
+        run: playwright install --with-deps chromium
 
       - name: Run E2E Smoke
         run: npm run test:e2e
