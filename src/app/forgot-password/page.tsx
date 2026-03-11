@@ -47,14 +47,16 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-[#fdfbf7] p-4 text-[#4d4037]">
+      <Card className="w-full max-w-md rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
         <CardHeader className="space-y-1 text-center">
           <div className="mb-4 flex justify-center">
-            <Sparkles className="h-12 w-12 text-primary" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e5efdc] text-[#6d8466]">
+              <Sparkles className="h-6 w-6" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Reset your password</CardTitle>
-          <CardDescription>
+          <CardTitle className="font-serif text-4xl text-[#524236]">Reset your password</CardTitle>
+          <CardDescription className="text-[#7b6a5d]">
             Enter the email linked to your ApplyPilot account.
           </CardDescription>
         </CardHeader>
@@ -76,7 +78,7 @@ export default function ForgotPasswordPage() {
               </div>
             </div>
             {sent ? (
-              <div className="rounded-lg border bg-muted/50 p-3 text-sm text-muted-foreground">
+              <div className="rounded-lg border border-[#eadfd3] bg-[#fff9f3] p-3 text-sm text-[#7b6a5d]">
                 If the account exists, a password reset link is on its way.
               </div>
             ) : null}
@@ -95,9 +97,9 @@ export default function ForgotPasswordPage() {
                 </>
               )}
             </Button>
-            <p className="text-center text-sm text-muted-foreground">
+            <p className="text-center text-sm text-[#7b6a5d]">
               Remembered it?{' '}
-              <Link href="/login" className="text-primary hover:underline">
+              <Link href="/login" className="text-[#6d5b4f] hover:underline">
                 Back to sign in
               </Link>
             </p>

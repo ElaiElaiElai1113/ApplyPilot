@@ -194,6 +194,12 @@ export default function GeneratePage() {
 
       toast({ title: 'Saved to tracker', description: 'The package is now available in your workflow board.' })
       router.push('/tracker')
+    } catch (error) {
+      toast({
+        title: 'Save failed',
+        description: error instanceof Error ? error.message : 'Could not save to tracker right now.',
+        variant: 'destructive',
+      })
     } finally {
       setIsSaving(false)
     }

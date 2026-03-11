@@ -5,6 +5,7 @@ import net from 'node:net'
 import { createClient } from './supabase/server'
 import { logEvent } from './observability'
 import { trackServerEvent } from './analytics/server'
+import { isRateLimitExceeded } from './rate-limit'
 import {
   buildDeterministicTailoredResume,
   buildResumeRewritePrompt,
@@ -913,6 +914,21 @@ export async function extractJobPostingFromUrl(urlInput: string): Promise<Extrac
     throw new GenerationError('Please sign in to import job links.', 'unauthorized')
   }
 
+  const urlImportRateLimited = await isRateLimitExceeded({
+    supabase,
+    table: 'analytics_events',
+    userId: user.id,
+    windowSeconds: 60,
+    maxRequests: 8,
+    eventNames: ['job_url_import_succeeded', 'job_url_import_failed'],
+  })
+  if (urlImportRateLimited) {
+    throw new GenerationError(
+      'Too many job URL imports in a short time. Please wait a minute and retry.',
+      'job_url_rate_limited'
+    )
+  }
+
   let parsed: URL
   try {
     parsed = new URL(urlInput.trim())
@@ -1170,6 +1186,20 @@ export async function generateApplication(
 
   if (userError || !user) {
     throw new GenerationError('Please sign in to generate applications.', 'unauthorized')
+  }
+
+  const generationBurstRateLimited = await isRateLimitExceeded({
+    supabase,
+    table: 'ai_generation_usage',
+    userId: user.id,
+    windowSeconds: 60,
+    maxRequests: 6,
+  })
+  if (generationBurstRateLimited) {
+    throw new GenerationError(
+      'Too many generation requests in a short time. Please wait about a minute before retrying.',
+      'generation_rate_limited'
+    )
   }
 
   const company = input.company.trim().slice(0, MAX_COMPANY_CHARS)

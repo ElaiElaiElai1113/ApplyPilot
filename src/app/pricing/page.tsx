@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import type { Metadata } from 'next'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, Sparkles, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
@@ -14,9 +14,10 @@ const tiers = [
     name: 'Starter',
     price: '$0',
     cadence: '/month',
-    description: 'Best for validating the workflow before you commit.',
-    cta: 'Create Free Account',
+    description: 'Everything required to run a focused application workflow.',
+    cta: 'Start for free',
     href: '/signup',
+    availability: 'Available now',
     features: [
       'Up to 20 AI generations per month',
       'Resume vault and application tracker',
@@ -27,30 +28,31 @@ const tiers = [
     name: 'Pro',
     price: '$19',
     cadence: '/month',
-    description: 'For active job seekers who want more volume and a stronger workflow.',
-    cta: 'Start Pro Trial',
+    description: 'Higher throughput for active weekly applicants.',
+    cta: 'Join Pro waitlist',
     href: '/signup',
+    availability: 'Coming soon',
     featured: true,
     features: [
       'Higher generation limits',
       'Priority AI processing',
-      'Export-ready application workflow',
-      'Future billing, settings, and support upgrades',
+      'Expanded workflow exports',
+      'Priority support',
     ],
   },
 ]
 
 export default function PricingPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/10">
-      <section className="container mx-auto px-4 py-20">
+    <main className="min-h-screen bg-[#fdfbf7] text-[#4d4037]">
+      <section className="mx-auto max-w-6xl px-4 py-20">
         <div className="mx-auto mb-12 max-w-3xl text-center">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-primary/10 px-4 py-2 text-sm font-medium text-primary">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-[#eef5e8] px-4 py-2 text-sm font-medium text-[#6e8567]">
             <Sparkles className="h-4 w-4" />
             Transparent pricing before signup
           </div>
-          <h1 className="mb-4 text-4xl font-bold md:text-5xl">Pricing built for job-search momentum</h1>
-          <p className="text-lg text-muted-foreground">
+          <h1 className="mb-4 font-serif text-5xl text-[#4f4035]">Pricing built for job-search momentum</h1>
+          <p className="text-lg text-[#746659]">
             Start free, validate the workflow, then upgrade when you need more generations and faster throughput.
           </p>
         </div>
@@ -59,33 +61,37 @@ export default function PricingPage() {
           {tiers.map((tier) => (
             <Card
               key={tier.name}
-              className={tier.featured ? 'border-primary shadow-lg shadow-primary/10' : ''}
+              className={`rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)] ${
+                tier.featured ? 'ring-2 ring-[#d98f74]/35' : ''
+              }`}
             >
               <CardHeader>
-                <CardTitle className="flex items-center justify-between text-2xl">
+                <CardTitle className="flex items-center justify-between font-serif text-3xl text-[#524236]">
                   {tier.name}
-                  {tier.featured ? (
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-sm text-primary">
-                      Recommended
-                    </span>
-                  ) : null}
+                  <span className={`rounded-full px-3 py-1 text-xs ${tier.featured ? 'bg-[#f7e4db] text-[#9a593f]' : 'bg-[#eef5e8] text-[#6c8265]'}`}>
+                    {tier.availability}
+                  </span>
                 </CardTitle>
-                <CardDescription>{tier.description}</CardDescription>
+                <CardDescription className="text-[#7b6a5d]">{tier.description}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-end gap-1">
-                  <span className="text-4xl font-bold">{tier.price}</span>
-                  <span className="pb-1 text-muted-foreground">{tier.cadence}</span>
+                  <span className="font-serif text-5xl text-[#524236]">{tier.price}</span>
+                  <span className="pb-1 text-[#8a7769]">{tier.cadence}</span>
                 </div>
                 <div className="space-y-3">
                   {tier.features.map((feature) => (
-                    <div key={feature} className="flex items-start gap-3 text-sm">
-                      <Check className="mt-0.5 h-4 w-4 text-primary" />
+                    <div key={feature} className="flex items-start gap-3 text-sm text-[#6d5d51]">
+                      <Check className="mt-0.5 h-4 w-4 text-[#86a27e]" />
                       <span>{feature}</span>
                     </div>
                   ))}
                 </div>
-                <Button asChild className="w-full" variant={tier.featured ? 'default' : 'outline'}>
+                <Button
+                  asChild
+                  className={tier.featured ? 'w-full rounded-full bg-[#d98f74] text-white hover:bg-[#cf8064]' : 'w-full rounded-full'}
+                  variant={tier.featured ? 'default' : 'outline'}
+                >
                   <Link href={tier.href}>{tier.cta}</Link>
                 </Button>
               </CardContent>
@@ -93,16 +99,20 @@ export default function PricingPage() {
           ))}
         </div>
 
-        <div className="mx-auto mt-12 max-w-3xl rounded-2xl border bg-card/70 p-6 text-sm text-muted-foreground">
-          Billing is not yet wired in this repo, so this page currently establishes pricing clarity, packaging, and trust while the billing layer is finalized.
+        <div className="mx-auto mt-12 max-w-3xl rounded-[1.6rem] border border-[#eadfd3] bg-[#fff9f3] p-6 text-sm text-[#756659]">
+          Starter is currently available in-app. Pro access is being rolled out progressively, and pricing/packaging is finalized here to keep expectations clear before checkout goes live.
         </div>
 
-        <div className="mt-8 flex flex-col items-center justify-center gap-3 text-sm text-muted-foreground sm:flex-row">
-          <Link href="/terms" className="hover:text-foreground hover:underline">
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 text-sm text-[#8a7769] sm:flex-row">
+          <Link href="/terms" className="hover:text-[#5f4d40] hover:underline">
             Terms of Service
           </Link>
-          <Link href="/privacy" className="hover:text-foreground hover:underline">
+          <Link href="/privacy" className="hover:text-[#5f4d40] hover:underline">
             Privacy Policy
+          </Link>
+          <Link href="/signup" className="inline-flex items-center gap-1 hover:text-[#5f4d40] hover:underline">
+            Create account
+            <ArrowRight className="h-3 w-3" />
           </Link>
         </div>
       </section>

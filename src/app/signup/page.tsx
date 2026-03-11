@@ -30,10 +30,15 @@ export default function SignupPage() {
           description: result.error,
           variant: 'destructive',
         })
-      } else {
-        router.push('/dashboard')
+        return
       }
-    } catch (e) {
+      if (result?.requiresEmailConfirmation) {
+        router.push('/signup/confirm')
+        return
+      }
+
+      router.push('/dashboard')
+    } catch {
       setError('An unexpected error occurred')
       toast({
         title: 'Sign up failed',
@@ -46,14 +51,16 @@ export default function SignupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-[#fdfbf7] p-4 text-[#4d4037]">
+      <Card className="w-full max-w-md rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <Sparkles className="h-12 w-12 text-primary" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e5efdc] text-[#6d8466]">
+              <Sparkles className="h-6 w-6" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Create an account</CardTitle>
-          <CardDescription>
+          <CardTitle className="font-serif text-4xl text-[#524236]">Create an account</CardTitle>
+          <CardDescription className="text-[#7b6a5d]">
             Start applying to jobs 10x faster with AI
           </CardDescription>
         </CardHeader>
@@ -67,6 +74,7 @@ export default function SignupPage() {
                   id="fullName"
                   name="fullName"
                   type="text"
+                  autoComplete="name"
                   placeholder="John Doe"
                   className="pl-10"
                   required
@@ -81,6 +89,7 @@ export default function SignupPage() {
                   id="email"
                   name="email"
                   type="email"
+                  autoComplete="email"
                   placeholder="you@example.com"
                   className="pl-10"
                   required
@@ -95,10 +104,11 @@ export default function SignupPage() {
                   id="password"
                   name="password"
                   type="password"
+                  autoComplete="new-password"
                   placeholder="Create a password"
                   className="pl-10"
                   required
-                  minLength={6}
+                  minLength={8}
                 />
               </div>
             </div>
@@ -120,12 +130,12 @@ export default function SignupPage() {
                 </>
               )}
             </Button>
-            <p className="text-sm text-muted-foreground text-center">
-              Already have an account?{' '}
-              <Link href="/login" className="text-primary hover:underline">
-                Sign in
-              </Link>
-            </p>
+              <p className="text-sm text-[#7b6a5d] text-center">
+                Already have an account?{' '}
+                <Link href="/login" className="text-[#6d5b4f] hover:underline">
+                  Sign in
+                </Link>
+              </p>
           </CardFooter>
         </form>
       </Card>

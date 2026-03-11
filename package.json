@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test:smoke": "npm run lint && npm run typecheck && npm run build",
+    "test:e2e": "npx playwright test",
     "db:push": "supabase db push",
     "db:types": "supabase gen types typescript --local"
   },

@@ -142,31 +142,31 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="p-6 md:p-8">
+    <div className="p-6 text-[#4d4037] md:p-8">
       <div className="mx-auto max-w-4xl space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">Settings</h1>
-          <p className="mt-1 text-muted-foreground">
+          <h1 className="font-serif text-5xl text-[#524236]">Settings</h1>
+          <p className="mt-2 text-[#7b6a5d]">
             Manage your account identity, email, and security workflow.
           </p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <Card>
+          <Card className="rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
             <CardHeader>
-              <CardTitle>Profile</CardTitle>
-              <CardDescription>
+              <CardTitle className="font-serif text-3xl text-[#56463b]">Profile</CardTitle>
+              <CardDescription className="text-[#7b6a5d]">
                 This name is used across your dashboard and generated workflow.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="flex items-center gap-4 rounded-xl border bg-muted/30 p-4">
+              <div className="flex items-center gap-4 rounded-xl border border-[#eadfd3] bg-[#fff9f3] p-4">
                 <Avatar className="h-14 w-14">
-                  <AvatarFallback>{initials || 'AP'}</AvatarFallback>
+                  <AvatarFallback className="bg-[#efe5f7] text-[#7f6790]">{initials || 'AP'}</AvatarFallback>
                 </Avatar>
                 <div>
-                  <p className="font-medium">{formData.fullName || 'ApplyPilot user'}</p>
-                  <p className="text-sm text-muted-foreground">{formData.email}</p>
+                  <p className="font-medium text-[#56463b]">{formData.fullName || 'ApplyPilot user'}</p>
+                  <p className="text-sm text-[#8a7769]">{formData.email}</p>
                 </div>
               </div>
 
@@ -200,10 +200,10 @@ export default function SettingsPage() {
           </Card>
 
           <div className="space-y-6">
-            <Card>
+            <Card className="rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
               <CardHeader>
-                <CardTitle>Email</CardTitle>
-                <CardDescription>
+                <CardTitle className="font-serif text-3xl text-[#56463b]">Email</CardTitle>
+                <CardDescription className="text-[#7b6a5d]">
                   Updating your email triggers a confirmation flow through Supabase.
                 </CardDescription>
               </CardHeader>
@@ -241,17 +241,17 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
               <CardHeader>
-                <CardTitle>Security</CardTitle>
-                <CardDescription>
+                <CardTitle className="font-serif text-3xl text-[#56463b]">Security</CardTitle>
+                <CardDescription className="text-[#7b6a5d]">
                   Use the reset flow to rotate your password safely.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-start gap-3 rounded-xl border bg-muted/30 p-4">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 text-primary" />
-                  <p className="text-sm text-muted-foreground">
+                <div className="flex items-start gap-3 rounded-xl border border-[#eadfd3] bg-[#fff9f3] p-4">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 text-[#6d8466]" />
+                  <p className="text-sm text-[#7b6a5d]">
                     Password changes are handled through your authenticated reset route to avoid weak in-app shortcuts.
                   </p>
                 </div>

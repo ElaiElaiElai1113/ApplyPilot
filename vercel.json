@@ -24,6 +24,10 @@
     "GLM_API_URL": {
       "description": "GLM API URL",
       "value": "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    },
+    "HEALTHCHECK_SECRET": {
+      "description": "Secret required by /api/health in production (x-healthcheck-secret header)",
+      "value": ""
     }
   }
 }

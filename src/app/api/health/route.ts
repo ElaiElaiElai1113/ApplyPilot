@@ -1,7 +1,29 @@
 import { NextResponse } from 'next/server'
+import { timingSafeEqual } from 'node:crypto'
 
-export async function GET() {
+function secureCompareSecret(expected: string, provided: string | null): boolean {
+  if (!provided) return false
+  const expectedBuffer = Buffer.from(expected)
+  const providedBuffer = Buffer.from(provided)
+  if (expectedBuffer.length !== providedBuffer.length) return false
+  return timingSafeEqual(expectedBuffer, providedBuffer)
+}
+
+export async function GET(request: Request) {
   const startedAt = Date.now()
+  const healthSecret = process.env.HEALTHCHECK_SECRET?.trim()
+  const requestSecret =
+    request.headers.get('x-healthcheck-secret') ||
+    request.headers.get('x-health-secret')
+  const hasSecret = Boolean(healthSecret)
+  const isAuthorized =
+    !hasSecret || secureCompareSecret(healthSecret || '', requestSecret)
+  const inProduction = process.env.NODE_ENV === 'production'
+
+  if (inProduction && !isAuthorized) {
+    return NextResponse.json({ status: 'not_found' }, { status: 404 })
+  }
+
   const requiredEnv = {
     NEXT_PUBLIC_SUPABASE_URL: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
     NEXT_PUBLIC_SUPABASE_ANON_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
@@ -31,6 +53,17 @@ export async function GET() {
 
   const ok = envReady && supabaseReachable
   const status = ok ? 200 : 503
+
+  if (inProduction && !hasSecret) {
+    return NextResponse.json(
+      {
+        status: ok ? 'ok' : 'degraded',
+        timestamp: new Date().toISOString(),
+        latency_ms: Date.now() - startedAt,
+      },
+      { status }
+    )
+  }
 
   return NextResponse.json(
     {

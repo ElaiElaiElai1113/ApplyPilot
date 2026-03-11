@@ -30,10 +30,10 @@ export default function LoginPage() {
           description: result.error,
           variant: 'destructive',
         })
-      } else {
-        router.push('/dashboard')
+        return
       }
-    } catch (e) {
+      router.push('/dashboard')
+    } catch {
       setError('An unexpected error occurred')
       toast({
         title: 'Sign in failed',
@@ -46,14 +46,16 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-[#fdfbf7] p-4 text-[#4d4037]">
+      <Card className="w-full max-w-md rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
         <CardHeader className="space-y-1 text-center">
           <div className="flex justify-center mb-4">
-            <Sparkles className="h-12 w-12 text-primary" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e5efdc] text-[#6d8466]">
+              <Sparkles className="h-6 w-6" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Welcome back</CardTitle>
-          <CardDescription>
+          <CardTitle className="font-serif text-4xl text-[#524236]">Welcome back</CardTitle>
+          <CardDescription className="text-[#7b6a5d]">
             Sign in to your ApplyPilot account
           </CardDescription>
         </CardHeader>
@@ -67,6 +69,7 @@ export default function LoginPage() {
                   id="email"
                   name="email"
                   type="email"
+                  autoComplete="email"
                   placeholder="you@example.com"
                   className="pl-10"
                   required
@@ -76,7 +79,7 @@ export default function LoginPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <Link href="/forgot-password" className="text-sm text-primary hover:underline">
+                <Link href="/forgot-password" className="text-sm text-[#6d5b4f] hover:underline">
                   Forgot password?
                 </Link>
               </div>
@@ -86,6 +89,7 @@ export default function LoginPage() {
                   id="password"
                   name="password"
                   type="password"
+                  autoComplete="current-password"
                   placeholder="Enter your password"
                   className="pl-10"
                   required
@@ -110,12 +114,12 @@ export default function LoginPage() {
                 </>
               )}
             </Button>
-            <p className="text-sm text-muted-foreground text-center">
-              Don't have an account?{' '}
-              <Link href="/signup" className="text-primary hover:underline">
-                Sign up
-              </Link>
-            </p>
+              <p className="text-sm text-[#7b6a5d] text-center">
+                Don't have an account?{' '}
+                <Link href="/signup" className="text-[#6d5b4f] hover:underline">
+                  Sign up
+                </Link>
+              </p>
           </CardFooter>
         </form>
       </Card>

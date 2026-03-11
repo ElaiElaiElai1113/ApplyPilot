@@ -18,8 +18,8 @@ const config = {
     },
     extend: {
       fontFamily: {
-        sans: ['var(--font-sans)', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        serif: ['var(--font-serif)', 'ui-serif', 'Georgia', 'serif'],
+        sans: ['Nunito', 'Avenir Next', 'Avenir', 'Segoe UI', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        serif: ['Fraunces', 'Iowan Old Style', 'Baskerville', 'Georgia', 'ui-serif', 'serif'],
       },
       colors: {
         border: "hsl(var(--border))",

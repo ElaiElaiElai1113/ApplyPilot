@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { logEvent } from '@/lib/observability'
 import { trackServerEvent } from '@/lib/analytics/server'
 import { formatResumeText } from '@/lib/resume-format'
+import { isRateLimitExceeded } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 
@@ -80,6 +81,21 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { error: 'Unauthorized' },
       { status: 401 }
+    )
+  }
+
+  const resumeImportRateLimited = await isRateLimitExceeded({
+    supabase,
+    table: 'analytics_events',
+    userId: user.id,
+    windowSeconds: 60,
+    maxRequests: 6,
+    eventNames: ['resume_pdf_import_succeeded', 'resume_pdf_import_failed'],
+  })
+  if (resumeImportRateLimited) {
+    return NextResponse.json(
+      { error: 'Too many PDF imports in a short time. Please wait about a minute and retry.' },
+      { status: 429 }
     )
   }
 

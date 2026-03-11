@@ -97,14 +97,16 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-b from-background to-secondary/10 p-4">
-      <Card className="w-full max-w-md">
+    <div className="flex min-h-screen items-center justify-center bg-[#fdfbf7] p-4 text-[#4d4037]">
+      <Card className="w-full max-w-md rounded-[2rem] border-[#eadfd3] bg-white/90 shadow-[0_18px_60px_rgba(214,195,180,0.14)]">
         <CardHeader className="space-y-1 text-center">
           <div className="mb-4 flex justify-center">
-            <Sparkles className="h-12 w-12 text-primary" />
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#e5efdc] text-[#6d8466]">
+              <Sparkles className="h-6 w-6" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Choose a new password</CardTitle>
-          <CardDescription>
+          <CardTitle className="font-serif text-4xl text-[#524236]">Choose a new password</CardTitle>
+          <CardDescription className="text-[#7b6a5d]">
             Reset access to your ApplyPilot account.
           </CardDescription>
         </CardHeader>
@@ -122,6 +124,7 @@ export default function ResetPasswordPage() {
                   <Input
                     id="password"
                     type="password"
+                    autoComplete="new-password"
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     className="pl-10"
@@ -137,6 +140,7 @@ export default function ResetPasswordPage() {
                   <Input
                     id="confirmPassword"
                     type="password"
+                    autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)}
                     className="pl-10"
@@ -160,9 +164,9 @@ export default function ResetPasswordPage() {
                   </>
                 )}
               </Button>
-              <p className="text-center text-sm text-muted-foreground">
+              <p className="text-center text-sm text-[#7b6a5d]">
                 Need another link?{' '}
-                <Link href="/forgot-password" className="text-primary hover:underline">
+                <Link href="/forgot-password" className="text-[#6d5b4f] hover:underline">
                   Request a new reset email
                 </Link>
               </p>
